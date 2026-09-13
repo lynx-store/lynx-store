@@ -14,8 +14,9 @@ export default function ProductDetailsPage() {
   
   const [selectedColor, setSelectedColor] = useState('');
   const [selectedSize, setSelectedSize] = useState('M');
+  const [activeImage, setActiveImage] = useState('');
 
-  // سلة المشتريات المصغرة في نفس الصفحة للتفاعل الفوري
+  // سلة المشتريات المصغرة
   const [cart, setCart] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckout, setIsCheckout] = useState(false);
@@ -32,6 +33,12 @@ export default function ProductDetailsPage() {
         const { data, error } = await supabase.from('products').select('*').eq('id', id).single();
         if (error) throw error;
         setProduct(data);
+        
+        // تعيين الصورة الرئيسية الأولية
+        if (data?.image_url) {
+          setActiveImage(data.image_url);
+        }
+
         if (data?.colors && data.colors.length > 0) {
           setSelectedColor(data.colors[0].name);
           if (data.colors[0].sizes && data.colors[0].sizes.length > 0) {
@@ -51,18 +58,39 @@ export default function ProductDetailsPage() {
   if (!product) return <div className="min-h-screen bg-gray-950 text-white p-12 text-center" dir="rtl">المنتج غير موجود.</div>;
 
   const activeColorObj = product.colors?.find(c => c.name === selectedColor) || product.colors?.[0];
-  const displayImage = activeColorObj?.image && activeColorObj.image.trim() !== '' 
-    ? activeColorObj.image 
-    : product.image_url;
+  
+  // تجميع كل الصور المتاحة (الصورة الأساسية + الصور الإضافية بزوايا مختلفة + صور الألوان الخاصة)
+  const allImages = [
+    product.image_url,
+    ...(product.extra_images || []),
+    ...(product.colors?.map(c => c.image).filter(Boolean) || [])
+  ].filter(Boolean);
 
   const currentStock = activeColorObj ? activeColorObj.stock : 10;
   const availableSizes = activeColorObj?.sizes || ['M', 'L', 'XL', '2XL'];
 
   const handleColorChange = (col) => {
     setSelectedColor(col.name);
+    if (col.image) {
+      setActiveImage(col.image);
+    }
     if (col.sizes && col.sizes.length > 0) {
       setSelectedSize(col.sizes[0]);
     }
+  };
+
+  // دالة لتحويل رابط يوتيوب العادي إلى رابط مضمن (Embed) للفيديو
+  const getEmbedUrl = (url) => {
+    if (!url) return '';
+    if (url.includes('youtube.com/watch?v=')) {
+      const videoId = url.split('v=')[1]?.split('&')[0];
+      return `https://www.youtube.com/embed/${videoId}`;
+    }
+    if (url.includes('youtu.be/')) {
+      const videoId = url.split('youtu.be/')[1]?.split('?')[0];
+      return `https://www.youtube.com/embed/${videoId}`;
+    }
+    return url;
   };
 
   const addToCart = () => {
@@ -89,7 +117,7 @@ export default function ProductDetailsPage() {
           selectedColor,
           selectedSize,
           quantity: 1,
-          image_url: displayImage
+          image_url: activeImage || product.image_url
         }
       ];
     });
@@ -158,85 +186,127 @@ export default function ProductDetailsPage() {
         </button>
       </header>
 
-      {/* تفاصيل المنتج الأساسية */}
-      <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10 bg-gray-900 border border-gray-800 p-6 md:p-10 rounded-3xl shadow-2xl">
-        <div className="overflow-hidden rounded-2xl border border-gray-800 bg-gray-950">
-          {displayImage && (
-            <img src={displayImage} alt={product.title} className="w-full h-96 object-cover transition-all" />
-          )}
-        </div>
+      {/* تفاصيل المنتج والمعرض */}
+      <div className="max-w-5xl mx-auto space-y-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 bg-gray-900 border border-gray-800 p-6 md:p-10 rounded-3xl shadow-2xl">
+          
+          {/* قسم المعرض والصور بزوايا مختلفة */}
+          <div className="space-y-4">
+            <div className="overflow-hidden rounded-2xl border border-gray-800 bg-gray-950 h-96">
+              {activeImage && (
+                <img src={activeImage} alt={product.title} className="w-full h-full object-cover transition-all duration-300" />
+              )}
+            </div>
 
-        <div className="flex flex-col justify-between space-y-6">
-          <div>
-            <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-1 rounded-full text-xs font-bold">
-              {product.category || 'تصميم LYNX'}
-            </span>
-            <h1 className="text-3xl font-extrabold text-white mt-3 mb-2">{product.title}</h1>
-            <p className="text-2xl font-black text-amber-400 mb-4">{product.price} ج.م</p>
-            <p className="text-gray-300 text-sm leading-relaxed mb-6 border-t border-gray-800 pt-4">{product.description}</p>
+            {/* صور مصغرة للتبديل بين الزوايا */}
+            {allImages.length > 1 && (
+              <div className="flex gap-3 overflow-x-auto pb-2">
+                {allImages.map((img, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setActiveImage(img)}
+                    className={`w-16 h-16 rounded-xl overflow-hidden border-2 flex-shrink-0 transition-all ${
+                      activeImage === img ? 'border-amber-400 scale-105' : 'border-gray-800 opacity-60 hover:opacity-100'
+                    }`}
+                  >
+                    <img src={img} alt="" className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
-            {/* الألوان */}
-            {product.colors && product.colors.length > 0 && (
-              <div className="mb-4">
-                <label className="block text-xs font-semibold text-gray-400 mb-2">اختر اللون:</label>
+          {/* معلومات المنتج والشراء */}
+          <div className="flex flex-col justify-between space-y-6">
+            <div>
+              <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-1 rounded-full text-xs font-bold">
+                {product.category || 'تصميم LYNX'}
+              </span>
+              <h1 className="text-3xl font-extrabold text-white mt-3 mb-2">{product.title}</h1>
+              <p className="text-2xl font-black text-amber-400 mb-4">{product.price} ج.م</p>
+              <p className="text-gray-300 text-sm leading-relaxed mb-6 border-t border-gray-800 pt-4">{product.description}</p>
+
+              {/* الألوان */}
+              {product.colors && product.colors.length > 0 && (
+                <div className="mb-4">
+                  <label className="block text-xs font-semibold text-gray-400 mb-2">اختر اللون:</label>
+                  <div className="flex flex-wrap gap-2">
+                    {product.colors.map((col, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => handleColorChange(col)}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
+                          selectedColor === col.name
+                            ? 'bg-amber-500 text-black border-amber-400 shadow-lg'
+                            : 'bg-gray-950 text-gray-300 border-gray-800 hover:border-gray-700'
+                        }`}
+                      >
+                        {col.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* المقاسات */}
+              <div className="mb-6">
+                <label className="block text-xs font-semibold text-gray-400 mb-2">اختر المقاس:</label>
                 <div className="flex flex-wrap gap-2">
-                  {product.colors.map((col, idx) => (
+                  {availableSizes.map((size) => (
                     <button
-                      key={idx}
-                      onClick={() => handleColorChange(col)}
+                      key={size}
+                      onClick={() => setSelectedSize(size)}
                       className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
-                        selectedColor === col.name
+                        selectedSize === size
                           ? 'bg-amber-500 text-black border-amber-400 shadow-lg'
                           : 'bg-gray-950 text-gray-300 border-gray-800 hover:border-gray-700'
                       }`}
                     >
-                      {col.name}
+                      {size}
                     </button>
                   ))}
                 </div>
               </div>
-            )}
 
-            {/* المقاسات */}
-            <div className="mb-6">
-              <label className="block text-xs font-semibold text-gray-400 mb-2">اختر المقاس:</label>
-              <div className="flex flex-wrap gap-2">
-                {availableSizes.map((size) => (
-                  <button
-                    key={size}
-                    onClick={() => setSelectedSize(size)}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
-                      selectedSize === size
-                        ? 'bg-amber-500 text-black border-amber-400 shadow-lg'
-                        : 'bg-gray-950 text-gray-300 border-gray-800 hover:border-gray-700'
-                    }`}
-                  >
-                    {size}
-                  </button>
-                ))}
+              <div className="text-xs mb-2">
+                {currentStock > 0 ? (
+                  <span className="text-green-400 font-bold">✔ متوفر في المخزون</span>
+                ) : (
+                  <span className="text-red-400 font-bold">❌ نفذت الكمية لهذا اللون</span>
+                )}
               </div>
             </div>
 
-            <div className="text-xs mb-2">
-              {currentStock > 0 ? (
-                <span className="text-green-400 font-bold">✔ متوفر في المخزون</span>
-              ) : (
-                <span className="text-red-400 font-bold">❌ نفذت الكمية لهذا اللون</span>
-              )}
+            <button
+              onClick={addToCart}
+              disabled={currentStock <= 0}
+              className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-extrabold py-3.5 rounded-xl transition-all cursor-pointer shadow-lg shadow-amber-500/10 text-center"
+            >
+              {currentStock > 0 ? 'إضافة إلى السلة' : 'نفذت الكمية'}
+            </button>
+          </div>
+        </div>
+
+        {/* قسم فيديو إعلان المنتج */}
+        {product.video_url && (
+          <div className="bg-gray-900 border border-gray-800 p-6 md:p-8 rounded-3xl shadow-xl">
+            <h2 className="text-xl font-bold text-amber-400 mb-4 flex items-center gap-2">
+              <span>🎬</span> فيديو استعراض وإعلان المنتج
+            </h2>
+            <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black border border-gray-800">
+              <iframe
+                src={getEmbedUrl(product.video_url)}
+                title="Product Ad"
+                className="w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              ></iframe>
             </div>
           </div>
-
-          <button
-            onClick={addToCart}
-            disabled={currentStock <= 0}
-            className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-extrabold py-3.5 rounded-xl transition-all cursor-pointer shadow-lg shadow-amber-500/10 text-center"
-          >
-            {currentStock > 0 ? 'إضافة إلى السلة' : 'نفذت الكمية'}
-          </button>
-        </div>
+        )}
       </div>
 
-      {/* Drawer */}
+      {/* Drawer السلة */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex justify-start">
           <div className="bg-gray-900 w-full max-w-md h-full p-6 flex flex-col justify-between border-l border-gray-800 shadow-2xl overflow-y-auto">
@@ -270,7 +340,7 @@ export default function ProductDetailsPage() {
                     <textarea required rows={3} value={address} onChange={(e) => setAddress(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-white" />
                   </div>
 
-                  <div className="flex gap-3 pt-4">
+                <div className="flex gap-3 pt-4">
                     <button type="button" onClick={() => setIsCheckout(false)} className="w-1/3 bg-gray-800 text-white font-bold py-3 rounded-xl">الرجوع</button>
                     <button type="submit" disabled={submitting} className="w-2/3 bg-amber-500 text-black font-extrabold py-3 rounded-xl">
                       {submitting ? 'جاري الإرسال...' : 'تأكيد وإرسال الطلب'}
