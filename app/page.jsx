@@ -2,9 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import Link from 'next/link';
 
 export default function Home() {
   const [products, setProducts] = useState([]);
+  const [filteredProducts, setFilteredProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState('الكل');
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -18,7 +23,7 @@ export default function Home() {
   const [submitting, setSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
 
-  // تتبع الاختيارات لكل منتج (اللون والمقاس)
+  // تتبع الاختيارات السريعة لكل منتج في القائمة الرئيسية
   const [selectedColors, setSelectedColors] = useState({});
   const [selectedSizes, setSelectedSizes] = useState({});
 
@@ -28,6 +33,11 @@ export default function Home() {
         const { data, error } = await supabase.from('products').select('*');
         if (error) throw error;
         setProducts(data || []);
+        setFilteredProducts(data || []);
+
+        // استخراج الأقسام الفريدة
+        const uniqueCategories = ['الكل', ...new Set(data.map(p => p.category).filter(Boolean))];
+        setCategories(uniqueCategories);
         
         const initialColors = {};
         const initialSizes = {};
@@ -49,6 +59,16 @@ export default function Home() {
     }
     fetchProducts();
   }, []);
+
+  // تصفية المنتجات حسب القسم
+  const handleCategoryFilter = (cat) => {
+    setSelectedCategory(cat);
+    if (cat === 'الكل') {
+      setFilteredProducts(products);
+    } else {
+      setFilteredProducts(products.filter(p => p.category === cat));
+    }
+  };
 
   const handleColorSelect = (productId, colorObj) => {
     setSelectedColors(prev => ({ ...prev, [productId]: colorObj.name }));
@@ -159,30 +179,62 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-12 font-sans" dir="rtl">
-      <header className="max-w-6xl mx-auto flex justify-between items-center mb-12 border-b border-gray-800 pb-6">
+      {/* الهيدر */}
+      <header className="max-w-6xl mx-auto flex justify-between items-center mb-10 border-b border-gray-800 pb-6">
         <div>
           <h1 className="text-4xl font-black text-amber-400 tracking-wider">LYNX</h1>
           <span className="text-xs text-green-400 font-bold">✔ ONLINE STORE</span>
         </div>
-        <button onClick={() => setIsCartOpen(true)} className="bg-amber-500 text-black font-extrabold px-5 py-2 rounded-xl hover:bg-amber-400 transition-all flex items-center gap-2 cursor-pointer">
-          <span>🛒 السلة</span>
-          <span className="bg-black text-amber-400 text-xs px-2 py-0.5 rounded-full font-black">{totalItems}</span>
-        </button>
+        <div className="flex items-center gap-4">
+          <a href="/admin" className="text-xs bg-gray-900 hover:bg-gray-800 text-gray-400 px-3 py-2 rounded-xl border border-gray-800">
+            لوحة التحكم ⚙️
+          </a>
+          <button onClick={() => setIsCartOpen(true)} className="bg-amber-500 text-black font-extrabold px-5 py-2 rounded-xl hover:bg-amber-400 transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-amber-500/10">
+            <span>🛒 السلة</span>
+            <span className="bg-black text-amber-400 text-xs px-2 py-0.5 rounded-full font-black">{totalItems}</span>
+          </button>
+        </div>
       </header>
 
-      <section className="max-w-6xl mx-auto">
-        <h2 className="text-2xl font-bold mb-8 text-gray-200">تشكيلة المنتجات</h2>
+      {/* شريط الفلترة والأقسام */}
+      <section className="max-w-6xl mx-auto mb-10">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+          <h2 className="text-2xl font-bold text-gray-200">تشكيلة المنتجات</h2>
+          
+          {/* أزرار الفلترة */}
+          <div className="flex flex-wrap gap-2">
+            {categories.map((cat, idx) => (
+              <button
+                key={idx}
+                onClick={() => handleCategoryFilter(cat)}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+                  selectedCategory === cat
+                    ? 'bg-amber-500 text-black border-amber-400 shadow-md'
+                    : 'bg-gray-900 text-gray-400 border-gray-800 hover:text-white'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {loading && <div className="text-center py-12 text-gray-400">جاري التحميل...</div>}
         {error && <p className="text-red-400">خطأ: {error}</p>}
 
+        {!loading && !error && filteredProducts.length === 0 && (
+          <div className="text-center py-16 bg-gray-900/50 rounded-2xl border border-gray-800/60">
+            <p className="text-gray-400">لا توجد منتجات في هذا القسم حالياً.</p>
+          </div>
+        )}
+
+        {/* شبكة المنتجات */}
         {!loading && !error && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {products.map((product) => {
+            {filteredProducts.map((product) => {
               const activeColorName = selectedColors[product.id] || product.colors?.[0]?.name;
               const activeColorObj = product.colors?.find(c => c.name === activeColorName) || product.colors?.[0];
               
-              // الصورة: لو اللون ليه صورة خاصة بتظهر، لو ملوش بتظهر صورة المنتج الأساسية
               const displayImage = activeColorObj?.image && activeColorObj.image.trim() !== '' 
                 ? activeColorObj.image 
                 : product.image_url;
@@ -192,17 +244,25 @@ export default function Home() {
               const activeSize = selectedSizes[product.id] || availableSizes[0];
 
               return (
-                <div key={product.id} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-lg flex flex-col justify-between">
-                  {displayImage && (
-                    <img src={displayImage} alt={product.title} className="w-full h-64 object-cover transition-all duration-300" />
-                  )}
+                <div key={product.id} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-lg flex flex-col justify-between group">
+                  {/* رابط لصفحة تفاصيل المنتج */}
+                  <Link href={`/product/${product.id}`} className="overflow-hidden relative block">
+                    {displayImage && (
+                      <img src={displayImage} alt={product.title} className="w-full h-64 object-cover group-hover:scale-105 transition-transform duration-500" />
+                    )}
+                    <span className="absolute top-3 right-3 bg-black/70 backdrop-blur-md text-amber-400 text-xs px-3 py-1 rounded-full font-bold border border-gray-800">
+                      {product.category || 'عام'}
+                    </span>
+                  </Link>
+
                   <div className="p-6 flex-1 flex flex-col justify-between">
                     <div>
-                      <span className="text-xs text-amber-400 font-semibold uppercase">{product.category}</span>
-                      <h3 className="text-xl font-bold mt-1 mb-2 text-white">{product.title}</h3>
+                      <Link href={`/product/${product.id}`}>
+                        <h3 className="text-xl font-bold mb-2 text-white hover:text-amber-400 transition-colors">{product.title}</h3>
+                      </Link>
                       <p className="text-gray-400 text-sm mb-4 line-clamp-2">{product.description}</p>
 
-                      {/* اختيار الألوان */}
+                      {/* الألوان */}
                       {product.colors && product.colors.length > 0 && (
                         <div className="mb-3">
                           <label className="block text-xs font-semibold text-gray-300 mb-1.5">اللون:</label>
@@ -224,7 +284,7 @@ export default function Home() {
                         </div>
                       )}
 
-                      {/* اختيار المقاسات */}
+                      {/* المقاسات */}
                       <div className="mb-4">
                         <label className="block text-xs font-semibold text-gray-300 mb-1.5">المقاس:</label>
                         <div className="flex flex-wrap gap-2">
@@ -244,7 +304,7 @@ export default function Home() {
                         </div>
                       </div>
 
-                      {/* حالة التوفر (بدون إظهار عدد القطع) */}
+                      {/* التوفر */}
                       <div className="mb-2 text-xs">
                         {currentStock > 0 ? (
                           <span className="text-green-400 font-semibold">✔ متوفر</span>
@@ -259,7 +319,7 @@ export default function Home() {
                       <button
                         onClick={() => addToCart(product)}
                         disabled={currentStock <= 0}
-                        className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-bold px-4 py-2 rounded-xl transition-all cursor-pointer"
+                        className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-bold px-4 py-2 rounded-xl transition-all cursor-pointer shadow-lg shadow-amber-500/10"
                       >
                         {currentStock > 0 ? 'إضافة للسلة' : 'نفذت الكمية'}
                       </button>
@@ -272,7 +332,7 @@ export default function Home() {
         )}
       </section>
 
-      {/* Drawer */}
+      {/* سلة المشتريات (Drawer) */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex justify-start">
           <div className="bg-gray-900 w-full max-w-md h-full p-6 flex flex-col justify-between border-l border-gray-800 shadow-2xl overflow-y-auto">
@@ -319,7 +379,7 @@ export default function Home() {
                     <p className="text-center text-gray-500 py-12">السلة فارغة حالياً</p>
                   ) : (
                     <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
-                      {cart.map((item, idx) => (
+                      {cart.path || cart.map((item, idx) => (
                         <div key={idx} className="flex items-center justify-between bg-gray-950 p-4 rounded-xl border border-gray-800">
                           <div className="flex items-center gap-3">
                             {item.image_url && <img src={item.image_url} alt="" className="w-12 h-12 object-cover rounded-lg" />}
