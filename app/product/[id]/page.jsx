@@ -15,14 +15,21 @@ export default function ProductDetailsPage() {
   const [selectedColor, setSelectedColor] = useState('');
   const [selectedSize, setSelectedSize] = useState('M');
   const [activeImage, setActiveImage] = useState('');
+  const [isFavorite, setIsFavorite] = useState(false);
 
-  // سلة المشتريات المصغرة
+  // سلة المشتريات والكوبونات
   const [cart, setCart] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckout, setIsCheckout] = useState(false);
+  
+  // حقول الشحنة وأكواد الخصم
   const [customerName, setCustomerName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [address, setAddress] = useState('');
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedDiscount, setAppliedDiscount] = useState(0); // نسبة الخصم
+  const [couponMessage, setCouponMessage] = useState('');
+  
   const [submitting, setSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
 
@@ -34,7 +41,6 @@ export default function ProductDetailsPage() {
         if (error) throw error;
         setProduct(data);
         
-        // تعيين الصورة الرئيسية الأولية
         if (data?.image_url) {
           setActiveImage(data.image_url);
         }
@@ -45,6 +51,11 @@ export default function ProductDetailsPage() {
             setSelectedSize(data.colors[0].sizes[0]);
           }
         }
+
+        // فحص هل المنتج مفضل مسبقاً
+        const wishlist = JSON.parse(localStorage.getItem('lynx_wishlist') || '[]');
+        setIsFavorite(wishlist.includes(id));
+
       } catch (err) {
         console.error(err);
       } finally {
@@ -54,12 +65,24 @@ export default function ProductDetailsPage() {
     fetchProduct();
   }, [id]);
 
+  const toggleFavorite = () => {
+    const wishlist = JSON.parse(localStorage.getItem('lynx_wishlist') || '[]');
+    let updated;
+    if (wishlist.includes(id)) {
+      updated = wishlist.filter(item => item !== id);
+      setIsFavorite(false);
+    } else {
+      updated = [...wishlist, id];
+      setIsFavorite(true);
+    }
+    localStorage.setItem('lynx_wishlist', JSON.stringify(updated));
+  };
+
   if (loading) return <div className="min-h-screen bg-gray-950 text-white p-12 text-center" dir="rtl">جاري تحميل تفاصيل المنتج...</div>;
   if (!product) return <div className="min-h-screen bg-gray-950 text-white p-12 text-center" dir="rtl">المنتج غير موجود.</div>;
 
   const activeColorObj = product.colors?.find(c => c.name === selectedColor) || product.colors?.[0];
   
-  // تجميع كل الصور المتاحة (الصورة الأساسية + الصور الإضافية بزوايا مختلفة + صور الألوان الخاصة)
   const allImages = [
     product.image_url,
     ...(product.extra_images || []),
@@ -79,7 +102,6 @@ export default function ProductDetailsPage() {
     }
   };
 
-  // دالة لتحويل رابط يوتيوب العادي إلى رابط مضمن (Embed) للفيديو
   const getEmbedUrl = (url) => {
     if (!url) return '';
     if (url.includes('youtube.com/watch?v=')) {
@@ -136,8 +158,24 @@ export default function ProductDetailsPage() {
     );
   };
 
-  const totalPrice = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const subTotalPrice = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const discountAmount = (subTotalPrice * appliedDiscount) / 100;
+  const totalPrice = Math.max(0, subTotalPrice - discountAmount);
   const totalItems = cart.reduce((sum, i) => sum + i.quantity, 0);
+
+  const applyCoupon = () => {
+    const code = couponInput.trim().toUpperCase();
+    if (code === 'LYNX10' || code === 'LYNX') {
+      setAppliedDiscount(10); // خصم 10%
+      setCouponMessage('تم تطبيق كود الخصم (10%) بنجاح! 🎉');
+    } else if (code === 'VIP') {
+      setAppliedDiscount(20); // خصم 20%
+      setCouponMessage('تم تطبيق كود VIP (20%) بنجاح! 🚀');
+    } else {
+      setAppliedDiscount(0);
+      setCouponMessage('كود الخصم غير صحيح ❌');
+    }
+  };
 
   const handlePlaceOrder = async (e) => {
     e.preventDefault();
@@ -180,17 +218,25 @@ export default function ProductDetailsPage() {
         <Link href="/" className="bg-gray-900 hover:bg-gray-800 text-amber-400 font-bold px-4 py-2 rounded-xl border border-gray-800 text-xs">
           ← العودة للمتجر الرئيسي
         </Link>
-        <button onClick={() => setIsCartOpen(true)} className="bg-amber-500 text-black font-extrabold px-5 py-2 rounded-xl hover:bg-amber-400 transition-all flex items-center gap-2 cursor-pointer">
+        <button onClick={() => setIsCartOpen(true)} className="bg-amber-500 text-black font-extrabold px-5 py-2 rounded-xl hover:bg-amber-400 transition-all flex items-center gap-2 cursor-pointer shadow-lg">
           <span>🛒 السلة</span>
           <span className="bg-black text-amber-400 text-xs px-2 py-0.5 rounded-full font-black">{totalItems}</span>
         </button>
       </header>
 
-      {/* تفاصيل المنتج والمعرض */}
+      {/* تفاصيل المنتج */}
       <div className="max-w-5xl mx-auto space-y-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 bg-gray-900 border border-gray-800 p-6 md:p-10 rounded-3xl shadow-2xl">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 bg-gray-900 border border-gray-800 p-6 md:p-10 rounded-3xl shadow-2xl relative">
           
-          {/* قسم المعرض والصور بزوايا مختلفة */}
+          {/* زر المفضلة */}
+          <button
+            onClick={toggleFavorite}
+            className="absolute top-6 left-6 z-10 bg-gray-950/90 hover:bg-gray-950 p-3 rounded-full border border-gray-800 text-xl transition-all shadow-md cursor-pointer"
+          >
+            {isFavorite ? '❤️' : '🤍'}
+          </button>
+
+          {/* المعرض والصور */}
           <div className="space-y-4">
             <div className="overflow-hidden rounded-2xl border border-gray-800 bg-gray-950 h-96">
               {activeImage && (
@@ -198,14 +244,13 @@ export default function ProductDetailsPage() {
               )}
             </div>
 
-            {/* صور مصغرة للتبديل بين الزوايا */}
             {allImages.length > 1 && (
               <div className="flex gap-3 overflow-x-auto pb-2">
                 {allImages.map((img, idx) => (
                   <button
                     key={idx}
                     onClick={() => setActiveImage(img)}
-                    className={`w-16 h-16 rounded-xl overflow-hidden border-2 flex-shrink-0 transition-all ${
+                    className={`w-16 h-16 rounded-xl overflow-hidden border-2 flex-shrink-0 transition-all cursor-pointer ${
                       activeImage === img ? 'border-amber-400 scale-105' : 'border-gray-800 opacity-60 hover:opacity-100'
                     }`}
                   >
@@ -235,7 +280,7 @@ export default function ProductDetailsPage() {
                       <button
                         key={idx}
                         onClick={() => handleColorChange(col)}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
+                        className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                           selectedColor === col.name
                             ? 'bg-amber-500 text-black border-amber-400 shadow-lg'
                             : 'bg-gray-950 text-gray-300 border-gray-800 hover:border-gray-700'
@@ -256,7 +301,7 @@ export default function ProductDetailsPage() {
                     <button
                       key={size}
                       onClick={() => setSelectedSize(size)}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
+                      className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                         selectedSize === size
                           ? 'bg-amber-500 text-black border-amber-400 shadow-lg'
                           : 'bg-gray-950 text-gray-300 border-gray-800 hover:border-gray-700'
@@ -287,7 +332,7 @@ export default function ProductDetailsPage() {
           </div>
         </div>
 
-        {/* قسم فيديو إعلان المنتج */}
+        {/* فيديو إعلان المنتج */}
         {product.video_url && (
           <div className="bg-gray-900 border border-gray-800 p-6 md:p-8 rounded-3xl shadow-xl">
             <h2 className="text-xl font-bold text-amber-400 mb-4 flex items-center gap-2">
@@ -315,7 +360,7 @@ export default function ProductDetailsPage() {
                 <h3 className="text-2xl font-bold text-amber-400">
                   {orderSuccess ? 'تم الطلب بنجاح!' : isCheckout ? 'تفاصيل شحن الطلب' : 'سلة المشتريات'}
                 </h3>
-                <button onClick={closeDrawer} className="text-gray-400 hover:text-white font-bold text-2xl">✕</button>
+                <button onClick={closeDrawer} className="text-gray-400 hover:text-white font-bold text-2xl cursor-pointer">✕</button>
               </div>
 
               {orderSuccess ? (
@@ -323,7 +368,7 @@ export default function ProductDetailsPage() {
                   <div className="text-6xl">🎉</div>
                   <h4 className="text-2xl font-bold text-white">شكراً لطلبك من LYNX!</h4>
                   <p className="text-gray-400 text-sm">تم تسجيل طلبك بنجاح وسيتواصل معك الفريق قريباً.</p>
-                  <button onClick={closeDrawer} className="mt-6 bg-amber-500 hover:bg-amber-400 text-black font-bold px-6 py-2 rounded-xl">متابعة</button>
+                  <button onClick={closeDrawer} className="mt-6 bg-amber-500 hover:bg-amber-400 text-black font-bold px-6 py-2 rounded-xl cursor-pointer">متابعة</button>
                 </div>
               ) : isCheckout ? (
                 <form onSubmit={handlePlaceOrder} className="space-y-4">
@@ -340,9 +385,9 @@ export default function ProductDetailsPage() {
                     <textarea required rows={3} value={address} onChange={(e) => setAddress(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-white" />
                   </div>
 
-                <div className="flex gap-3 pt-4">
-                    <button type="button" onClick={() => setIsCheckout(false)} className="w-1/3 bg-gray-800 text-white font-bold py-3 rounded-xl">الرجوع</button>
-                    <button type="submit" disabled={submitting} className="w-2/3 bg-amber-500 text-black font-extrabold py-3 rounded-xl">
+                  <div className="flex gap-3 pt-4">
+                    <button type="button" onClick={() => setIsCheckout(false)} className="w-1/3 bg-gray-800 text-white font-bold py-3 rounded-xl cursor-pointer">الرجوع</button>
+                    <button type="submit" disabled={submitting} className="w-2/3 bg-amber-500 text-black font-extrabold py-3 rounded-xl cursor-pointer">
                       {submitting ? 'جاري الإرسال...' : 'تأكيد وإرسال الطلب'}
                     </button>
                   </div>
@@ -352,7 +397,7 @@ export default function ProductDetailsPage() {
                   {cart.length === 0 ? (
                     <p className="text-center text-gray-500 py-12">السلة فارغة حالياً</p>
                   ) : (
-                    <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+                    <div className="space-y-4 max-h-[45vh] overflow-y-auto pr-1">
                       {cart.map((item, idx) => (
                         <div key={idx} className="flex items-center justify-between bg-gray-950 p-4 rounded-xl border border-gray-800">
                           <div className="flex items-center gap-3">
@@ -364,9 +409,9 @@ export default function ProductDetailsPage() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2 bg-gray-900 px-2 py-1 rounded-lg border border-gray-700">
-                            <button onClick={() => updateQuantity(item.selectedColor, item.selectedSize, -1)} className="text-gray-400 px-1 font-bold">-</button>
+                            <button type="button" onClick={() => updateQuantity(item.selectedColor, item.selectedSize, -1)} className="text-gray-400 px-1 font-bold cursor-pointer">-</button>
                             <span className="text-white font-bold text-sm">{item.quantity}</span>
-                            <button onClick={() => updateQuantity(item.selectedColor, item.selectedSize, 1)} className="text-gray-400 px-1 font-bold">+</button>
+                            <button type="button" onClick={() => updateQuantity(item.selectedColor, item.selectedSize, 1)} className="text-gray-400 px-1 font-bold cursor-pointer">+</button>
                           </div>
                         </div>
                       ))}
@@ -374,11 +419,47 @@ export default function ProductDetailsPage() {
                   )}
 
                   {cart.length > 0 && (
-                    <div className="border-t border-gray-800 pt-4 mt-6">
-                      <div className="flex justify-between items-center mb-6">
-                        <span className="text-gray-400 font-bold">الإجمالي:</span>
-                        <span className="text-2xl font-extrabold text-amber-400">{totalPrice} ج.م</span>
+                    <div className="border-t border-gray-800 pt-4 mt-4 space-y-4">
+                      {/* خانة كود الخصم */}
+                      <div className="bg-gray-950 p-3 rounded-xl border border-gray-800 space-y-2">
+                        <label className="block text-xs font-semibold text-gray-300">لديك كود خصم؟ (جرب LYNX10)</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={couponInput}
+                            onChange={(e) => setCouponInput(e.target.value)}
+                            placeholder="أدخل الكود"
+                            className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-xs text-white uppercase"
+                          />
+                          <button
+                            type="button"
+                            onClick={applyCoupon}
+                            className="bg-gray-800 hover:bg-gray-700 text-amber-400 text-xs font-bold px-3 py-2 rounded-lg border border-gray-700 cursor-pointer"
+                          >
+                            تطبيق
+                          </button>
+                        </div>
+                        {couponMessage && <p className="text-xs font-semibold mt-1 text-amber-400">{couponMessage}</p>}
                       </div>
+
+                      {/* إجمالي الحساب */}
+                      <div className="space-y-1 text-sm pt-2">
+                        <div className="flex justify-between text-gray-400">
+                          <span>المجموع الفرعي:</span>
+                          <span>{subTotalPrice} ج.م</span>
+                        </div>
+                        {appliedDiscount > 0 && (
+                          <div className="flex justify-between text-green-400 font-semibold">
+                            <span>الخصم ({appliedDiscount}%):</span>
+                            <span>- {discountAmount} ج.م</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between items-center text-lg font-extrabold pt-2 border-t border-gray-800">
+                          <span className="text-gray-300">الإجمالي النهائي:</span>
+                          <span className="text-2xl text-amber-400">{totalPrice} ج.م</span>
+                        </div>
+                      </div>
+
                       <button onClick={() => setIsCheckout(true)} className="w-full bg-amber-500 hover:bg-amber-600 text-black font-extrabold py-3 rounded-xl text-lg cursor-pointer">
                         إتمام الطلب
                       </button>
