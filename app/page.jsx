@@ -8,17 +8,18 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // حالات السلة ونافذة الشراء
   const [cart, setCart] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckout, setIsCheckout] = useState(false);
 
-  // بيانات نموذج المشتري
   const [customerName, setCustomerName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [address, setAddress] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
+
+  // تتبع اللون المختار لكل منتج حسب الـ ID
+  const [selectedColors, setSelectedColors] = useState({});
 
   useEffect(() => {
     async function fetchProducts() {
@@ -26,6 +27,15 @@ export default function Home() {
         const { data, error } = await supabase.from('products').select('*');
         if (error) throw error;
         setProducts(data || []);
+        
+        // تعيين أول لون افتراضي لكل منتج
+        const initialColors = {};
+        data?.forEach(p => {
+          if (p.colors && p.colors.length > 0) {
+            initialColors[p.id] = p.colors[0].name;
+          }
+        });
+        setSelectedColors(initialColors);
       } catch (err) {
         setError(err.message);
       } finally {
@@ -35,24 +45,45 @@ export default function Home() {
     fetchProducts();
   }, []);
 
+  const handleColorSelect = (productId, colorName) => {
+    setSelectedColors(prev => ({ ...prev, [productId]: colorName }));
+  };
+
   const addToCart = (product) => {
+    const chosenColor = selectedColors[product.id] || (product.colors?.[0]?.name ?? 'افتراضي');
+    
+    // البحث عن مخزون هذا اللون
+    const colorObj = product.colors?.find(c => c.name === chosenColor);
+    const stock = colorObj ? colorObj.stock : 10;
+
+    if (stock <= 0) {
+      alert('عذراً، هذا اللون غير متوفر حالياً في المخزن.');
+      return;
+    }
+
     setCart((prevCart) => {
-      const existingItem = prevCart.find((item) => item.id === product.id);
+      const existingItem = prevCart.find((item) => item.id === product.id && item.selectedColor === chosenColor);
       if (existingItem) {
+        if (existingItem.quantity >= stock) {
+          alert('لقد وصلت الحد الأقصى للمخزون المتوفر لهذا اللون.');
+          return prevCart;
+        }
         return prevCart.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          item.id === product.id && item.selectedColor === chosenColor
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
         );
       }
-      return [...prevCart, { ...product, quantity: 1 }];
+      return [...prevCart, { ...product, selectedColor: chosenColor, quantity: 1, image_url: colorObj?.image || product.image_url }];
     });
     setIsCartOpen(true);
   };
 
-  const updateQuantity = (id, delta) => {
+  const updateQuantity = (id, selectedColor, delta) => {
     setCart((prevCart) =>
       prevCart
         .map((item) => {
-          if (item.id === id) {
+          if (item.id === id && item.selectedColor === selectedColor) {
             const newQty = item.quantity + delta;
             return newQty > 0 ? { ...item, quantity: newQty } : null;
           }
@@ -65,7 +96,6 @@ export default function Home() {
   const totalPrice = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  // إرسال الطلب لقاعدة البيانات
   const handlePlaceOrder = async (e) => {
     e.preventDefault();
     if (!customerName || !phoneNumber || !address) {
@@ -86,11 +116,10 @@ export default function Home() {
       ]);
 
       if (error) throw error;
-
       setOrderSuccess(true);
       setCart([]);
     } catch (err) {
-      alert('حدث خطأ أثناء إرسال الطلب: ' + err.message);
+      alert('خطأ: ' + err.message);
     } finally {
       setSubmitting(false);
     }
@@ -107,66 +136,91 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-12 font-sans" dir="rtl">
-      {/* Header */}
       <header className="max-w-6xl mx-auto flex justify-between items-center mb-12 border-b border-gray-800 pb-6">
         <div>
           <h1 className="text-4xl font-black text-amber-400 tracking-wider">LYNX</h1>
-          <span className="text-xs text-green-400 font-bold">✔ ONLINE STORE</span>
+          <span className="text-xs text-green-400 font-bold">✔ STORE LIVE</span>
         </div>
-        
-        <button
-          onClick={() => setIsCartOpen(true)}
-          className="bg-amber-500 text-black font-extrabold px-5 py-2 rounded-xl hover:bg-amber-400 transition-all flex items-center gap-2 cursor-pointer"
-        >
+        <button onClick={() => setIsCartOpen(true)} className="bg-amber-500 text-black font-extrabold px-5 py-2 rounded-xl hover:bg-amber-400 transition-all flex items-center gap-2 cursor-pointer">
           <span>🛒 السلة</span>
-          <span className="bg-black text-amber-400 text-xs px-2 py-0.5 rounded-full font-black">
-            {totalItems}
-          </span>
+          <span className="bg-black text-amber-400 text-xs px-2 py-0.5 rounded-full font-black">{totalItems}</span>
         </button>
       </header>
 
-      {/* Products Grid */}
       <section className="max-w-6xl mx-auto">
-        <h2 className="text-2xl font-bold mb-8 text-gray-200">المنتجات المتاحة</h2>
+        <h2 className="text-2xl font-bold mb-8 text-gray-200">تشكيلة المنتجات</h2>
 
-        {loading && <div className="text-center py-12 text-gray-400">جاري تحميل المنتجات...</div>}
-
-        {error && (
-          <p className="text-red-400 bg-red-950/50 p-4 rounded-xl border border-red-800">
-            حدث خطأ: {error}
-          </p>
-        )}
+        {loading && <div className="text-center py-12 text-gray-400">جاري التحميل...</div>}
+        {error && <p className="text-red-400">خطأ: {error}</p>}
 
         {!loading && !error && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {products.map((product) => (
-              <div key={product.id} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-lg flex flex-col justify-between">
-                {product.image_url && (
-                  <img src={product.image_url} alt={product.title} className="w-full h-56 object-cover" />
-                )}
-                <div className="p-6 flex-1 flex flex-col justify-between">
-                  <div>
-                    <span className="text-xs text-amber-400 font-semibold uppercase">{product.category}</span>
-                    <h3 className="text-xl font-bold mt-1 mb-2 text-white">{product.title}</h3>
-                    <p className="text-gray-400 text-sm mb-4 line-clamp-2">{product.description}</p>
-                  </div>
-                  <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-800">
-                    <span className="text-2xl font-extrabold text-amber-400">{product.price} ج.م</span>
-                    <button
-                      onClick={() => addToCart(product)}
-                      className="bg-amber-500 hover:bg-amber-600 text-black font-bold px-4 py-2 rounded-xl transition-all cursor-pointer"
-                    >
-                      إضافة للسلة
-                    </button>
+            {products.map((product) => {
+              const activeColorName = selectedColors[product.id] || product.colors?.[0]?.name;
+              const activeColorObj = product.colors?.find(c => c.name === activeColorName);
+              const displayImage = activeColorObj?.image || product.image_url;
+              const currentStock = activeColorObj ? activeColorObj.stock : 10;
+
+              return (
+                <div key={product.id} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-lg flex flex-col justify-between">
+                  {displayImage && (
+                    <img src={displayImage} alt={product.title} className="w-full h-64 object-cover transition-all duration-300" />
+                  )}
+                  <div className="p-6 flex-1 flex flex-col justify-between">
+                    <div>
+                      <span className="text-xs text-amber-400 font-semibold uppercase">{product.category}</span>
+                      <h3 className="text-xl font-bold mt-1 mb-2 text-white">{product.title}</h3>
+                      <p className="text-gray-400 text-sm mb-4 line-clamp-2">{product.description}</p>
+
+                      {/* اختيار الألوان والمخزون */}
+                      {product.colors && product.colors.length > 0 && (
+                        <div className="mb-4">
+                          <label className="block text-xs font-semibold text-gray-300 mb-2">اختر اللون:</label>
+                          <div className="flex flex-wrap gap-2">
+                            {product.colors.map((col, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => handleColorSelect(product.id, col.name)}
+                                className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
+                                  activeColorName === col.name
+                                    ? 'bg-amber-500 text-black border-amber-400'
+                                    : 'bg-gray-950 text-gray-300 border-gray-800 hover:border-gray-600'
+                                }`}
+                              >
+                                {col.name}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="mt-2 text-xs">
+                            {currentStock > 0 ? (
+                              <span className="text-green-400">✔ متوفر في المخزن ({currentStock} متاح)</span>
+                            ) : (
+                              <span className="text-red-400 font-bold">❌ غير متوفر حالياً</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-800">
+                      <span className="text-2xl font-extrabold text-amber-400">{product.price} ج.م</span>
+                      <button
+                        onClick={() => addToCart(product)}
+                        disabled={currentStock <= 0}
+                        className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-bold px-4 py-2 rounded-xl transition-all cursor-pointer"
+                      >
+                        {currentStock > 0 ? 'إضافة للسلة' : 'نفذت الكمية'}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
 
-      {/* Cart & Checkout Drawer */}
+      {/* Drawer */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex justify-start">
           <div className="bg-gray-900 w-full max-w-md h-full p-6 flex flex-col justify-between border-l border-gray-800 shadow-2xl overflow-y-auto">
@@ -175,106 +229,58 @@ export default function Home() {
                 <h3 className="text-2xl font-bold text-amber-400">
                   {orderSuccess ? 'تم الطلب بنجاح!' : isCheckout ? 'تفاصيل شحن الطلب' : 'سلة المشتريات'}
                 </h3>
-                <button onClick={closeDrawer} className="text-gray-400 hover:text-white font-bold text-2xl">
-                  ✕
-                </button>
+                <button onClick={closeDrawer} className="text-gray-400 hover:text-white font-bold text-2xl">✕</button>
               </div>
 
-              {/* نجاح إرسال الطلب */}
               {orderSuccess ? (
                 <div className="text-center py-12 space-y-4">
                   <div className="text-6xl">🎉</div>
                   <h4 className="text-2xl font-bold text-white">شكراً لطلبك من LYNX!</h4>
-                  <p className="text-gray-400 text-sm">تم تسجيل طلبك بنجاح وسيتواصل معك الفريق قريباً لتأكيد الشحن.</p>
-                  <button
-                    onClick={closeDrawer}
-                    className="mt-6 bg-amber-500 hover:bg-amber-400 text-black font-bold px-6 py-2 rounded-xl transition-all"
-                  >
-                    متابعة التسوق
-                  </button>
+                  <p className="text-gray-400 text-sm">تم تسجيل طلبك بنجاح وسيتواصل معك الفريق قريباً.</p>
+                  <button onClick={closeDrawer} className="mt-6 bg-amber-500 hover:bg-amber-400 text-black font-bold px-6 py-2 rounded-xl">متابعة التسوق</button>
                 </div>
               ) : isCheckout ? (
-                /* نموذج بيانات العميل */
                 <form onSubmit={handlePlaceOrder} className="space-y-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-300 mb-1">الاسم بالكامل</label>
-                    <input
-                      type="text"
-                      required
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                      placeholder="مثال: عبد الرحيم محمد"
-                      className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-white focus:border-amber-500 focus:outline-none"
-                    />
+                    <input type="text" required value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-white" />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-gray-300 mb-1">رقم الهاتف</label>
-                    <input
-                      type="tel"
-                      required
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
-                      placeholder="010xxxxxxxx"
-                      className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-white focus:border-amber-500 focus:outline-none"
-                    />
+                    <input type="tel" required value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-white" />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-300 mb-1">عنوان التوصيل التفصيلي</label>
-                    <textarea
-                      required
-                      rows={3}
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      placeholder="المحافظة - المدينة - اسم الشارع - رقم المبنى"
-                      className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-white focus:border-amber-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="bg-gray-950 p-4 rounded-xl border border-gray-800 space-y-2 mt-4">
-                    <div className="flex justify-between text-sm text-gray-400">
-                      <span>إجمالي المنتجات:</span>
-                      <span>{totalPrice} ج.م</span>
-                    </div>
-                    <div className="flex justify-between font-bold text-amber-400 text-lg border-t border-gray-800 pt-2">
-                      <span>المبلغ الإجمالي:</span>
-                      <span>{totalPrice} ج.م</span>
-                    </div>
+                    <label className="block text-sm font-semibold text-gray-300 mb-1">عنوان التوصيل</label>
+                    <textarea required rows={3} value={address} onChange={(e) => setAddress(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-white" />
                   </div>
 
                   <div className="flex gap-3 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => setIsCheckout(false)}
-                      className="w-1/3 bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl transition-all"
-                    >
-                      الرجوع
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className="w-2/3 bg-amber-500 hover:bg-amber-400 text-black font-extrabold py-3 rounded-xl transition-all disabled:opacity-50"
-                    >
+                    <button type="button" onClick={() => setIsCheckout(false)} className="w-1/3 bg-gray-800 text-white font-bold py-3 rounded-xl">الرجوع</button>
+                    <button type="submit" disabled={submitting} className="w-2/3 bg-amber-500 text-black font-extrabold py-3 rounded-xl">
                       {submitting ? 'جاري الإرسال...' : 'تأكيد وإرسال الطلب'}
                     </button>
                   </div>
                 </form>
               ) : (
-                /* عرض عناصر السلة */
                 <>
                   {cart.length === 0 ? (
                     <p className="text-center text-gray-500 py-12">السلة فارغة حالياً</p>
                   ) : (
                     <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
-                      {cart.map((item) => (
-                        <div key={item.id} className="flex items-center justify-between bg-gray-950 p-4 rounded-xl border border-gray-800">
-                          <div>
-                            <h4 className="font-bold text-white">{item.title}</h4>
-                            <p className="text-amber-400 font-semibold text-sm">{item.price} ج.م</p>
+                      {cart.map((item, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-gray-950 p-4 rounded-xl border border-gray-800">
+                          <div className="flex items-center gap-3">
+                            {item.image_url && <img src={item.image_url} alt="" className="w-12 h-12 object-cover rounded-lg" />}
+                            <div>
+                              <h4 className="font-bold text-white text-sm">{item.title}</h4>
+                              <p className="text-xs text-amber-400">اللون: {item.selectedColor}</p>
+                              <p className="text-amber-400 font-semibold text-sm">{item.price} ج.م</p>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-3 bg-gray-900 px-3 py-1 rounded-lg border border-gray-700">
-                            <button onClick={() => updateQuantity(item.id, -1)} className="text-gray-400 hover:text-white font-bold text-lg">-</button>
-                            <span className="text-white font-bold">{item.quantity}</span>
-                            <button onClick={() => updateQuantity(item.id, 1)} className="text-gray-400 hover:text-white font-bold text-lg">+</button>
+                          <div className="flex items-center gap-2 bg-gray-900 px-2 py-1 rounded-lg border border-gray-700">
+                            <button onClick={() => updateQuantity(item.id, item.selectedColor, -1)} className="text-gray-400 px-1 font-bold">-</button>
+                            <span className="text-white font-bold text-sm">{item.quantity}</span>
+                            <button onClick={() => updateQuantity(item.id, item.selectedColor, 1)} className="text-gray-400 px-1 font-bold">+</button>
                           </div>
                         </div>
                       ))}
@@ -287,10 +293,7 @@ export default function Home() {
                         <span className="text-gray-400 font-bold">الإجمالي:</span>
                         <span className="text-2xl font-extrabold text-amber-400">{totalPrice} ج.م</span>
                       </div>
-                      <button
-                        onClick={() => setIsCheckout(true)}
-                        className="w-full bg-amber-500 hover:bg-amber-600 text-black font-extrabold py-3 rounded-xl transition-all text-lg cursor-pointer"
-                      >
+                      <button onClick={() => setIsCheckout(true)} className="w-full bg-amber-500 hover:bg-amber-600 text-black font-extrabold py-3 rounded-xl text-lg cursor-pointer">
                         إتمام الطلب
                       </button>
                     </div>
