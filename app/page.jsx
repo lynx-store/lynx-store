@@ -1,7 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+// اتصال مباشر لمنع أي خطأ في Vercel
+const supabaseUrl = 'https://nrpgainxhtftowdjuedf.supabase.co';
+const supabaseAnonKey = 'sb_publishable_gTdVWArmjQ99sj-QpE_mpJg_crAnz...'; // حط مفتاح الـ Publishable كاملاً هنا
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function Home() {
   const [products, setProducts] = useState([]);
@@ -11,10 +17,7 @@ export default function Home() {
   useEffect(() => {
     async function fetchProducts() {
       try {
-        const { data, error } = await supabase
-          .from('products')
-          .select('*');
-
+        const { data, error } = await supabase.from('products').select('*');
         if (error) throw error;
         setProducts(data || []);
       } catch (err) {
@@ -23,13 +26,11 @@ export default function Home() {
         setLoading(false);
       }
     }
-
     fetchProducts();
   }, []);
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-12" dir="rtl">
-      {/* Header */}
       <header className="max-w-6xl mx-auto flex justify-between items-center mb-12 border-b border-gray-800 pb-6">
         <h1 className="text-4xl font-black text-amber-400 tracking-wider">LYNX</h1>
         <span className="bg-amber-500/10 text-amber-400 text-sm px-4 py-1 rounded-full border border-amber-500/20 font-bold">
@@ -37,19 +38,14 @@ export default function Home() {
         </span>
       </header>
 
-      {/* Products Grid */}
       <section className="max-w-6xl mx-auto">
         <h2 className="text-2xl font-bold mb-8 text-gray-200">المنتجات المتاحة</h2>
 
-        {loading && (
-          <div className="text-center py-12 text-gray-400">
-            جاري تحميل المنتجات...
-          </div>
-        )}
+        {loading && <div className="text-center py-12 text-gray-400">جاري تحميل المنتجات...</div>}
 
         {error && (
           <p className="text-red-400 bg-red-950/50 p-4 rounded-xl border border-red-800">
-            حدث خطأ أثناء جلب المنتجات: {error}
+            حدث خطأ: {error}
           </p>
         )}
 
@@ -58,11 +54,7 @@ export default function Home() {
             {products.map((product) => (
               <div key={product.id} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-lg hover:border-amber-500/50 transition-all flex flex-col justify-between">
                 {product.image_url && (
-                  <img 
-                    src={product.image_url} 
-                    alt={product.title} 
-                    className="w-full h-56 object-cover"
-                  />
+                  <img src={product.image_url} alt={product.title} className="w-full h-56 object-cover" />
                 )}
                 <div className="p-6 flex-1 flex flex-col justify-between">
                   <div>
