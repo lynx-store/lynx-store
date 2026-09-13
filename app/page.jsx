@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-// اتصال مباشر لمنع أي خطأ في Vercel
+// وضع الرابط المباشر بدون أقواس وبدون مسارات زائدة
 const supabaseUrl = 'https://nrpgainxhtftowdjuedf.supabase.co';
-const supabaseAnonKey = 'sb_publishable_gTdVWArmjQ99sj-QpE_mpJg_crAnz...'; // حط مفتاح الـ Publishable كاملاً هنا
+const supabaseAnonKey = 'sb_publishable_gTdVWArmjQ99sj-QpE_mpJg_crAnz...'; // استبدل هذا بمفتاحك الكامل
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
