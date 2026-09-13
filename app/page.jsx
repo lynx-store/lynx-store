@@ -18,8 +18,9 @@ export default function Home() {
   const [submitting, setSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
 
-  // تتبع اللون المختار لكل منتج حسب الـ ID
+  // تتبع الاختيارات لكل منتج (اللون والمقاس)
   const [selectedColors, setSelectedColors] = useState({});
+  const [selectedSizes, setSelectedSizes] = useState({});
 
   useEffect(() => {
     async function fetchProducts() {
@@ -28,14 +29,18 @@ export default function Home() {
         if (error) throw error;
         setProducts(data || []);
         
-        // تعيين أول لون افتراضي لكل منتج
         const initialColors = {};
+        const initialSizes = {};
         data?.forEach(p => {
           if (p.colors && p.colors.length > 0) {
             initialColors[p.id] = p.colors[0].name;
+            if (p.colors[0].sizes && p.colors[0].sizes.length > 0) {
+              initialSizes[p.id] = p.colors[0].sizes[0];
+            }
           }
         });
         setSelectedColors(initialColors);
+        setSelectedSizes(initialSizes);
       } catch (err) {
         setError(err.message);
       } finally {
@@ -45,14 +50,21 @@ export default function Home() {
     fetchProducts();
   }, []);
 
-  const handleColorSelect = (productId, colorName) => {
-    setSelectedColors(prev => ({ ...prev, [productId]: colorName }));
+  const handleColorSelect = (productId, colorObj) => {
+    setSelectedColors(prev => ({ ...prev, [productId]: colorObj.name }));
+    if (colorObj.sizes && colorObj.sizes.length > 0) {
+      setSelectedSizes(prev => ({ ...prev, [productId]: colorObj.sizes[0] }));
+    }
+  };
+
+  const handleSizeSelect = (productId, size) => {
+    setSelectedSizes(prev => ({ ...prev, [productId]: size }));
   };
 
   const addToCart = (product) => {
     const chosenColor = selectedColors[product.id] || (product.colors?.[0]?.name ?? 'افتراضي');
+    const chosenSize = selectedSizes[product.id] || 'M';
     
-    // البحث عن مخزون هذا اللون
     const colorObj = product.colors?.find(c => c.name === chosenColor);
     const stock = colorObj ? colorObj.stock : 10;
 
@@ -62,28 +74,39 @@ export default function Home() {
     }
 
     setCart((prevCart) => {
-      const existingItem = prevCart.find((item) => item.id === product.id && item.selectedColor === chosenColor);
+      const existingItem = prevCart.find(
+        (item) => item.id === product.id && item.selectedColor === chosenColor && item.selectedSize === chosenSize
+      );
       if (existingItem) {
         if (existingItem.quantity >= stock) {
-          alert('لقد وصلت الحد الأقصى للمخزون المتوفر لهذا اللون.');
+          alert('لقد وصلت للحد الأقصى المتوفر من هذا المنتج.');
           return prevCart;
         }
         return prevCart.map((item) =>
-          item.id === product.id && item.selectedColor === chosenColor
+          item.id === product.id && item.selectedColor === chosenColor && item.selectedSize === chosenSize
             ? { ...item, quantity: item.quantity + 1 }
             : item
         );
       }
-      return [...prevCart, { ...product, selectedColor: chosenColor, quantity: 1, image_url: colorObj?.image || product.image_url }];
+      return [
+        ...prevCart,
+        {
+          ...product,
+          selectedColor: chosenColor,
+          selectedSize: chosenSize,
+          quantity: 1,
+          image_url: colorObj?.image || product.image_url
+        }
+      ];
     });
     setIsCartOpen(true);
   };
 
-  const updateQuantity = (id, selectedColor, delta) => {
+  const updateQuantity = (id, selectedColor, selectedSize, delta) => {
     setCart((prevCart) =>
       prevCart
         .map((item) => {
-          if (item.id === id && item.selectedColor === selectedColor) {
+          if (item.id === id && item.selectedColor === selectedColor && item.selectedSize === selectedSize) {
             const newQty = item.quantity + delta;
             return newQty > 0 ? { ...item, quantity: newQty } : null;
           }
@@ -139,7 +162,7 @@ export default function Home() {
       <header className="max-w-6xl mx-auto flex justify-between items-center mb-12 border-b border-gray-800 pb-6">
         <div>
           <h1 className="text-4xl font-black text-amber-400 tracking-wider">LYNX</h1>
-          <span className="text-xs text-green-400 font-bold">✔ STORE LIVE</span>
+          <span className="text-xs text-green-400 font-bold">✔ ONLINE STORE</span>
         </div>
         <button onClick={() => setIsCartOpen(true)} className="bg-amber-500 text-black font-extrabold px-5 py-2 rounded-xl hover:bg-amber-400 transition-all flex items-center gap-2 cursor-pointer">
           <span>🛒 السلة</span>
@@ -157,9 +180,16 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {products.map((product) => {
               const activeColorName = selectedColors[product.id] || product.colors?.[0]?.name;
-              const activeColorObj = product.colors?.find(c => c.name === activeColorName);
-              const displayImage = activeColorObj?.image || product.image_url;
+              const activeColorObj = product.colors?.find(c => c.name === activeColorName) || product.colors?.[0];
+              
+              // الصورة: لو اللون ليه صورة خاصة بتظهر، لو ملوش بتظهر صورة المنتج الأساسية
+              const displayImage = activeColorObj?.image && activeColorObj.image.trim() !== '' 
+                ? activeColorObj.image 
+                : product.image_url;
+
               const currentStock = activeColorObj ? activeColorObj.stock : 10;
+              const availableSizes = activeColorObj?.sizes || ['M', 'L', 'XL', '2XL'];
+              const activeSize = selectedSizes[product.id] || availableSizes[0];
 
               return (
                 <div key={product.id} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-lg flex flex-col justify-between">
@@ -172,15 +202,15 @@ export default function Home() {
                       <h3 className="text-xl font-bold mt-1 mb-2 text-white">{product.title}</h3>
                       <p className="text-gray-400 text-sm mb-4 line-clamp-2">{product.description}</p>
 
-                      {/* اختيار الألوان والمخزون */}
+                      {/* اختيار الألوان */}
                       {product.colors && product.colors.length > 0 && (
-                        <div className="mb-4">
-                          <label className="block text-xs font-semibold text-gray-300 mb-2">اختر اللون:</label>
+                        <div className="mb-3">
+                          <label className="block text-xs font-semibold text-gray-300 mb-1.5">اللون:</label>
                           <div className="flex flex-wrap gap-2">
                             {product.colors.map((col, idx) => (
                               <button
                                 key={idx}
-                                onClick={() => handleColorSelect(product.id, col.name)}
+                                onClick={() => handleColorSelect(product.id, col)}
                                 className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
                                   activeColorName === col.name
                                     ? 'bg-amber-500 text-black border-amber-400'
@@ -191,15 +221,37 @@ export default function Home() {
                               </button>
                             ))}
                           </div>
-                          <div className="mt-2 text-xs">
-                            {currentStock > 0 ? (
-                              <span className="text-green-400">✔ متوفر في المخزن ({currentStock} متاح)</span>
-                            ) : (
-                              <span className="text-red-400 font-bold">❌ غير متوفر حالياً</span>
-                            )}
-                          </div>
                         </div>
                       )}
+
+                      {/* اختيار المقاسات */}
+                      <div className="mb-4">
+                        <label className="block text-xs font-semibold text-gray-300 mb-1.5">المقاس:</label>
+                        <div className="flex flex-wrap gap-2">
+                          {availableSizes.map((size) => (
+                            <button
+                              key={size}
+                              onClick={() => handleSizeSelect(product.id, size)}
+                              className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
+                                activeSize === size
+                                  ? 'bg-amber-500 text-black border-amber-400'
+                                  : 'bg-gray-950 text-gray-300 border-gray-800 hover:border-gray-600'
+                              }`}
+                            >
+                              {size}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* حالة التوفر (بدون إظهار عدد القطع) */}
+                      <div className="mb-2 text-xs">
+                        {currentStock > 0 ? (
+                          <span className="text-green-400 font-semibold">✔ متوفر</span>
+                        ) : (
+                          <span className="text-red-400 font-bold">❌ غير متوفر حالياً</span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-800">
@@ -273,14 +325,14 @@ export default function Home() {
                             {item.image_url && <img src={item.image_url} alt="" className="w-12 h-12 object-cover rounded-lg" />}
                             <div>
                               <h4 className="font-bold text-white text-sm">{item.title}</h4>
-                              <p className="text-xs text-amber-400">اللون: {item.selectedColor}</p>
+                              <p className="text-xs text-amber-400">اللون: {item.selectedColor} | المقاس: {item.selectedSize}</p>
                               <p className="text-amber-400 font-semibold text-sm">{item.price} ج.م</p>
                             </div>
                           </div>
                           <div className="flex items-center gap-2 bg-gray-900 px-2 py-1 rounded-lg border border-gray-700">
-                            <button onClick={() => updateQuantity(item.id, item.selectedColor, -1)} className="text-gray-400 px-1 font-bold">-</button>
+                            <button onClick={() => updateQuantity(item.id, item.selectedColor, item.selectedSize, -1)} className="text-gray-400 px-1 font-bold">-</button>
                             <span className="text-white font-bold text-sm">{item.quantity}</span>
-                            <button onClick={() => updateQuantity(item.id, item.selectedColor, 1)} className="text-gray-400 px-1 font-bold">+</button>
+                            <button onClick={() => updateQuantity(item.id, item.selectedColor, item.selectedSize, 1)} className="text-gray-400 px-1 font-bold">+</button>
                           </div>
                         </div>
                       ))}
