@@ -1,3 +1,5 @@
+import './globals.css';
+
 export const metadata = {
   title: 'LYNX Store',
   description: 'LYNX E-Commerce Store',
