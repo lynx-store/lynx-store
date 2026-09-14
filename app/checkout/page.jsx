@@ -5,8 +5,16 @@ import { useStore } from '../../context/StoreContext';
 import { supabase } from '../../lib/supabase';
 import Link from 'next/link';
 
+// قائمة جميع محافظات مصر الـ 27 كاملة
+const EGYPT_GOVERNORATES = [
+  'القاهرة', 'الجيزة', 'الإسكندرية', 'الفيوم', 'سوهاج', 'الشرقية', 'الدقهلية',
+  'القليوبية', 'المنوفية', 'الغربية', 'البحيرة', 'كفر الشيخ', 'دمياط', 'بورسعيد',
+  'الإسماعيلية', 'السويس', 'شمال سيناء', 'جنوب سيناء', 'بني سويف', 'المنيا',
+  'أسيوط', 'قنا', 'الأقصر', 'أسوان', 'البحر الأحمر', 'الوادي الجديد', 'مطروح'
+];
+
 export default function CheckoutPage() {
-  const { cart, cartTotal, clearCart } = useStore();
+  const { cart, clearCart } = useStore();
   
   const [formData, setFormData] = useState({
     name: '',
@@ -18,8 +26,13 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(false);
   const [orderSubmitted, setOrderSubmitted] = useState(false);
 
-  // رقم واتساب المتجر الخاص بك مصحح بكود مصر
+  // رقم واتساب المتجر مصحح بكود مصر
   const STORE_WHATSAPP = '201130219615'; 
+
+  // حساب إجمالي السعر بدقة من السلة مباشرة
+  const itemsTotal = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const shippingFee = 50;
+  const grandTotal = itemsTotal + shippingFee;
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -33,21 +46,24 @@ export default function CheckoutPage() {
 
     try {
       // 1. حفظ الطلب في قاعدة البيانات Supabase
-      const { data, error } = await supabase.from('orders').insert([
+      const { error } = await supabase.from('orders').insert([
         {
           customer_name: formData.name,
           phone: formData.phone,
           governorate: formData.governorate,
           address: formData.address,
           items: cart,
-          total_price: cartTotal + 50,
+          total_price: grandTotal,
           status: 'قيد الانتظار',
         },
       ]);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
 
-      // 2. تجهيز نص الرسالة
+      // 2. تجهيز نص الرسالة للواتساب
       let itemsListText = cart
         .map((item) => `• ${item.title} (مقاس: ${item.size || 'M'}) × ${item.quantity} = ${item.price * item.quantity} ج.م`)
         .join('\n');
@@ -58,9 +74,9 @@ export default function CheckoutPage() {
         `📍 *المحافظة:* ${formData.governorate}\n` +
         `🏠 *العنوان:* ${formData.address}\n\n` +
         `🛍️ *الطلبات:*\n${itemsListText}\n\n` +
-        `💵 *إجمالي المنتجات:* ${cartTotal} ج.م\n` +
-        `🚚 *الشحن:* 50 ج.م\n` +
-        `💰 *المبلغ الإجمالي:* ${cartTotal + 50} ج.م`;
+        `💵 *إجمالي المنتجات:* ${itemsTotal} ج.م\n` +
+        `🚚 *الشحن:* ${shippingFee} ج.م\n` +
+        `💰 *المبلغ الإجمالي:* ${grandTotal} ج.م`;
 
       clearCart();
       setOrderSubmitted(true);
@@ -73,7 +89,7 @@ export default function CheckoutPage() {
 
     } catch (err) {
       console.error(err);
-      alert('حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مرة أخرى.');
+      alert('خطأ أثناء إرسال الطلب: ' + (err.message || 'تأكد من الاتصال بالإنترنت'));
     } finally {
       setLoading(false);
     }
@@ -131,7 +147,7 @@ export default function CheckoutPage() {
               required
               value={formData.name}
               onChange={handleChange}
-              placeholder="الاسم"
+              placeholder="أدخل اسمك الكامل"
               className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-amber-500"
             />
           </div>
@@ -157,12 +173,11 @@ export default function CheckoutPage() {
               onChange={handleChange}
               className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-amber-500"
             >
-              <option value="القاهرة">القاهرة</option>
-              <option value="الجيزة">الجيزة</option>
-              <option value="الإسكندرية">الإسكندرية</option>
-              <option value="الفيوم">الفيوم</option>
-              <option value="سوهاج">سوهاج</option>
-              <option value="باقي المحافظات">باقي المحافظات</option>
+              {EGYPT_GOVERNORATES.map((gov) => (
+                <option key={gov} value={gov}>
+                  {gov}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -174,7 +189,7 @@ export default function CheckoutPage() {
               rows="3"
               value={formData.address}
               onChange={handleChange}
-              placeholder="اسم الشارع - رقم المبنى"
+              placeholder="اسم الشارع - رقم المبنى - المنطقة"
               className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-amber-500"
             ></textarea>
           </div>
@@ -206,15 +221,15 @@ export default function CheckoutPage() {
           <div className="border-t border-gray-800 pt-4 space-y-2 text-xs">
             <div className="flex justify-between text-gray-400">
               <span>المجموع الفرعي:</span>
-              <span>{cartTotal} ج.م</span>
+              <span>{itemsTotal} ج.م</span>
             </div>
             <div className="flex justify-between text-gray-400">
               <span>مصاريف الشحن:</span>
-              <span>50 ج.م</span>
+              <span>{shippingFee} ج.م</span>
             </div>
             <div className="flex justify-between text-base font-black text-amber-400 pt-2 border-t border-gray-800">
               <span>الإجمالي الكلي:</span>
-              <span>{cartTotal + 50} ج.م</span>
+              <span>{grandTotal} ج.م</span>
             </div>
           </div>
         </div>
