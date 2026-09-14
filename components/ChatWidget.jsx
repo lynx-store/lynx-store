@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '@/lib/supabase';// تعديل المسار حسب مكان ملف سوبابيس عندك
-
+import { supabase } from '../lib/supabase';
 export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [userName, setUserName] = useState('');
