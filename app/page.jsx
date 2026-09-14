@@ -50,16 +50,11 @@ export default function StoreHomePage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-12 font-sans selection:bg-amber-500 selection:text-black" dir="rtl">
-      {/* الهيدر */}
+      {/* الهيدر بدون زر لوحة التحكم */}
       <header className="max-w-6xl mx-auto flex justify-between items-center mb-16 border-b border-gray-800 pb-6">
         <div>
           <h1 className="text-4xl font-black tracking-wider text-amber-400">LYNX</h1>
           <p className="text-gray-400 text-xs mt-1 uppercase tracking-widest">Fierce Streetwear & Fashion</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <Link href="/admin" className="bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-amber-400 text-xs font-bold px-4 py-2.5 rounded-xl border border-gray-800 transition-all">
-            لوحة التحكم ⚙️
-          </Link>
         </div>
       </header>
 
