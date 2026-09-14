@@ -7,8 +7,17 @@ import Link from 'next/link';
 
 export default function StoreHomePage() {
   const [products, setProducts] = useState([]);
+  const [filteredProducts, setFilteredProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // حالات البحث والفلترة
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('الكل');
+  const [sortBy, setSortBy] = useState('default');
+
   const { wishlist, toggleWishlist, addToCart } = useStore();
+
+  const CATEGORIES = ['الكل', 'هوديز', 'تيشيرتات', 'كابات', 'بنطلونات'];
 
   useEffect(() => {
     async function fetchProducts() {
@@ -16,6 +25,7 @@ export default function StoreHomePage() {
         const { data, error } = await supabase.from('products').select('*');
         if (error) throw error;
         setProducts(data || []);
+        setFilteredProducts(data || []);
       } catch (err) {
         console.error(err);
       } finally {
@@ -24,6 +34,32 @@ export default function StoreHomePage() {
     }
     fetchProducts();
   }, []);
+
+  // فلترة وترتيب المنتجات ديناميكياً عند أي تغيير
+  useEffect(() => {
+    let result = [...products];
+
+    // 1. الفلترة بالبحث
+    if (searchQuery.trim() !== '') {
+      result = result.filter((p) =>
+        p.title.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    // 2. الفلترة بالقسم
+    if (selectedCategory !== 'الكل') {
+      result = result.filter((p) => p.category === selectedCategory);
+    }
+
+    // 3. الترتيب
+    if (sortBy === 'price-low') {
+      result.sort((a, b) => a.price - b.price);
+    } else if (sortBy === 'price-high') {
+      result.sort((a, b) => b.price - a.price);
+    }
+
+    setFilteredProducts(result);
+  }, [searchQuery, selectedCategory, sortBy, products]);
 
   if (loading) {
     return (
@@ -34,7 +70,7 @@ export default function StoreHomePage() {
   }
 
   return (
-    <main className="max-w-6xl mx-auto p-6 md:p-12 space-y-12">
+    <main className="max-w-6xl mx-auto p-6 md:p-12 space-y-12" dir="rtl">
       {/* البانر الرئيسي */}
       <section className="bg-gradient-to-r from-gray-900 via-gray-900 to-amber-950/30 border border-gray-800 p-8 md:p-14 rounded-3xl shadow-2xl relative overflow-hidden">
         <div className="max-w-xl space-y-4">
@@ -50,20 +86,88 @@ export default function StoreHomePage() {
         </div>
       </section>
 
-      {/* شبكة المنتجات */}
-      <section>
-        <div className="flex justify-between items-center mb-8">
-          <h3 className="text-2xl font-extrabold text-white">القطع المتاحة</h3>
-          <span className="text-xs text-gray-500 font-semibold">{products.length} منتجات</span>
+      {/* أدوات البحث والفلترة والترتيب */}
+      <section className="space-y-6">
+        <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-gray-900 p-4 rounded-2xl border border-gray-800">
+          {/* شريط البحث */}
+          <div className="relative w-full md:w-96">
+            <span className="absolute right-3.5 top-3 text-gray-500 text-sm">🔍</span>
+            <input
+              type="text"
+              placeholder="ابحث عن قطعة أو موديل..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-gray-950 border border-gray-800 rounded-xl py-2.5 pr-10 pl-4 text-sm text-white focus:outline-none focus:border-amber-500 transition-all"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute left-3 top-2.5 text-gray-400 hover:text-white text-xs"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* الترتيب حسب السعر */}
+          <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+            <span className="text-xs text-gray-400 font-bold whitespace-nowrap">الترتيب:</span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="bg-gray-950 border border-gray-800 text-xs text-white rounded-xl p-2.5 focus:outline-none focus:border-amber-500 cursor-pointer"
+            >
+              <option value="default">الأحدث</option>
+              <option value="price-low">السعر: من الأقل للأعلى</option>
+              <option value="price-high">السعر: من الأعلى للأقل</option>
+            </select>
+          </div>
         </div>
 
-        {products.length === 0 ? (
-          <div className="text-center py-20 bg-gray-900/50 border border-gray-800 rounded-3xl">
-            <p className="text-gray-400">لا توجد منتجات مضافة حالياً.</p>
+        {/* أزرار الأقسام */}
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+          {CATEGORIES.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                selectedCategory === cat
+                  ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10'
+                  : 'bg-gray-900 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* شبكة المنتجات */}
+      <section>
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-2xl font-extrabold text-white">القطع المتاحة</h3>
+          <span className="text-xs text-gray-500 font-semibold">
+            عرض {filteredProducts.length} من {products.length} منتجات
+          </span>
+        </div>
+
+        {filteredProducts.length === 0 ? (
+          <div className="text-center py-20 bg-gray-900/50 border border-gray-800 rounded-3xl space-y-3">
+            <p className="text-4xl">🔎</p>
+            <p className="text-gray-400 font-semibold">لم نجد أي منتجات تطابق بحثك.</p>
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setSelectedCategory('الكل');
+              }}
+              className="text-xs font-bold text-amber-400 hover:underline"
+            >
+              إعادة ضبط الفلترة
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8">
-            {products.map((product) => {
+            {filteredProducts.map((product) => {
               const isFavorite = wishlist.includes(product.id);
               return (
                 <div
@@ -106,7 +210,7 @@ export default function StoreHomePage() {
                       <span className="text-xl font-black text-amber-400">{product.price} ج.م</span>
                       <button
                         onClick={() => addToCart(product)}
-                        className="bg-amber-500 hover:bg-amber-400 text-black text-xs font-extrabold px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md"
+                        className="bg-amber-500 hover:bg-amber-400 text-black text-xs font-extrabold px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md cursor-pointer"
                       >
                         <span>🛒</span> إضافة للسلة
                       </button>
