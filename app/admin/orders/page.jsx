@@ -1,30 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
-import Link from 'next/link';
 
 export default function AdminOrdersPage() {
-  const [authenticated, setAuthenticated] = useState(false);
-  const [password, setPassword] = useState('');
   const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // كلمة السر الافتراضية للوحة التحكم (تقدر تغيرها)
-  const ADMIN_PASS = 'lynx2026';
+  useEffect(() => {
+    fetchOrders();
+  }, []);
 
-  const handleLogin = (e) => {
-    e.preventDefault();
-    if (password === ADMIN_PASS) {
-      setAuthenticated(true);
-      fetchOrders();
-    } else {
-      alert('كلمة المرور غير صحيحة!');
-    }
-  };
-
-  const fetchOrders = async () => {
-    setLoading(true);
+  async function fetchOrders() {
     try {
       const { data, error } = await supabase
         .from('orders')
@@ -35,144 +22,107 @@ export default function AdminOrdersPage() {
       setOrders(data || []);
     } catch (err) {
       console.error(err);
-      alert('حدث خطأ أثناء جلب الطلبات');
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const updateOrderStatus = async (orderId, newStatus) => {
-    try {
-      const { error } = await supabase
-        .from('orders')
-        .update({ status: newStatus })
-        .eq('id', orderId);
-
-      if (error) throw error;
-
-      setOrders(
-        orders.map((order) =>
-          order.id === orderId ? { ...order, status: newStatus } : order
-        )
-      );
-    } catch (err) {
-      console.error(err);
-      alert('فشل تحديث حالة الطلب');
+  // دالة فتح محادثة الواتساب مع العميل
+  const handleSendWhatsApp = (order) => {
+    // تجهيز رقم الواتساب بالصيغة الدولية لمصر
+    let phoneNum = order.whatsapp || order.phone;
+    phoneNum = phoneNum.trim().replace(/[^0-9]/g, '');
+    if (phoneNum.startsWith('0')) {
+      phoneNum = '2' + phoneNum;
     }
+
+    let itemsText = order.items
+      ? order.items.map((i) => `• ${i.title} (مقاس: ${i.size || 'M'}) × ${i.quantity}`).join('\n')
+      : 'لا تفاصيل';
+
+    const msg = `أهلاً ${order.customer_name} 👋\nمعاك متجر LYNX 🐆\n\nبنأكد معاك طلبك:\n${itemsText}\n\nإجمالي المبلغ: ${order.total_price} ج.م (شامل الشحن)\nالعنوان: ${order.governorate} - ${order.address}\n\nيرجى الرد لتأكيد الشحن 🚀`;
+
+    const url = `https://api.whatsapp.com/send?phone=${phoneNum}&text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
   };
 
-  if (!authenticated) {
+  if (loading) {
     return (
-      <main className="min-h-[75vh] flex items-center justify-center p-6" dir="rtl">
-        <form
-          onSubmit={handleLogin}
-          className="bg-gray-900 border border-gray-800 p-8 rounded-3xl w-full max-w-md space-y-4 text-center shadow-2xl"
-        >
-          <span className="text-5xl">🔒</span>
-          <h1 className="text-2xl font-black text-white">لوحة تحكم LYNX</h1>
-          <p className="text-xs text-gray-400">أدخل كلمة المرور للوصول لطلبات العملاء</p>
-          <input
-            type="password"
-            placeholder="كلمة المرور"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-white text-center text-sm focus:outline-none focus:border-amber-500"
-          />
-          <button
-            type="submit"
-            className="w-full bg-amber-500 hover:bg-amber-400 text-black font-extrabold py-3 rounded-xl transition-all cursor-pointer"
-          >
-            دخول اللوحة 🚀
-          </button>
-        </form>
-      </main>
+      <div className="min-h-[70vh] flex items-center justify-center">
+        <p className="text-amber-400 font-bold animate-pulse">جاري تحميل الطلبات...</p>
+      </div>
     );
   }
 
   return (
-    <main className="max-w-6xl mx-auto p-6 md:p-12 space-y-8" dir="rtl">
-      <div className="flex justify-between items-center border-b border-gray-800 pb-4">
-        <div>
-          <h1 className="text-3xl font-black text-white flex items-center gap-2">
-            📦 إدارة الطلبات
-          </h1>
-          <p className="text-xs text-gray-400 mt-1">إجمالي الطلبات: {orders.length}</p>
-        </div>
-        <button
-          onClick={fetchOrders}
-          className="bg-gray-900 border border-gray-800 hover:border-amber-500/50 text-amber-400 text-xs font-bold px-4 py-2 rounded-xl transition-all"
-        >
-          🔄 تحديث القائمة
-        </button>
+    <main className="max-w-6xl mx-auto p-6 md:p-12" dir="rtl">
+      <div className="flex justify-between items-center mb-8 border-b border-gray-800 pb-4">
+        <h1 className="text-3xl font-black text-white">إدارة الطلبات 📦</h1>
+        <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-4 py-1.5 rounded-xl font-bold text-xs">
+          إجمالي الطلبات: {orders.length}
+        </span>
       </div>
 
-      {loading ? (
-        <div className="text-center py-20 text-amber-400 font-bold animate-pulse">
-          جاري تحميل الطلبات...
-        </div>
-      ) : orders.length === 0 ? (
-        <div className="text-center py-20 bg-gray-900 border border-gray-800 rounded-3xl text-gray-400">
-          لا توجد طلبات مسجلة حتى الآن 📭
-        </div>
+      {orders.length === 0 ? (
+        <p className="text-center text-gray-400 py-12 font-bold">لا توجد طلبات مسجلة حتى الآن.</p>
       ) : (
         <div className="space-y-6">
           {orders.map((order) => (
-            <div
-              key={order.id}
-              className="bg-gray-900 border border-gray-800 rounded-3xl p-6 space-y-4 shadow-lg"
-            >
-              <div className="flex flex-wrap justify-between items-start gap-4 border-b border-gray-800 pb-4">
+            <div key={order.id} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl space-y-4 shadow-xl">
+              {/* رأس الكارت: الاسم والتاريخ */}
+              <div className="flex flex-wrap justify-between items-center border-b border-gray-850 pb-4 gap-2">
                 <div>
-                  <h3 className="text-lg font-black text-amber-400">{order.customer_name}</h3>
-                  <p className="text-xs text-gray-400">
-                    📞 <a href={`tel:${order.phone}`} className="hover:underline">{order.phone}</a>
-                  </p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    📍 {order.governorate} - {order.address}
-                  </p>
-                  <p className="text-[10px] text-gray-600 mt-1">
+                  <h2 className="text-lg font-black text-white">{order.customer_name}</h2>
+                  <p className="text-xs text-gray-500">
                     تاريخ الطلب: {new Date(order.created_at).toLocaleString('ar-EG')}
                   </p>
                 </div>
+                
+                <button
+                  onClick={() => handleSendWhatsApp(order)}
+                  className="bg-green-600 hover:bg-green-500 text-white font-bold px-4 py-2 rounded-xl text-xs transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-green-600/20"
+                >
+                  <span>💬</span> تأكيد الطلب على الواتساب
+                </button>
+              </div>
 
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-bold text-gray-400">الحالة:</span>
-                  <select
-                    value={order.status || 'قيد الانتظار'}
-                    onChange={(e) => updateOrderStatus(order.id, e.target.value)}
-                    className="bg-gray-950 border border-gray-800 text-xs text-white rounded-xl p-2 focus:outline-none focus:border-amber-500"
-                  >
-                    <option value="قيد الانتظار">⏳ قيد الانتظار</option>
-                    <option value="جاري الشحن">🚚 جاري الشحن</option>
-                    <option value="تم التسليم">✅ تم التسليم</option>
-                    <option value="ملغي">❌ ملغي</option>
-                  </select>
+              {/* بيانات التواصل والعنوان */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs bg-gray-950 p-4 rounded-2xl border border-gray-850">
+                <div>
+                  <span className="text-gray-500 block font-bold mb-1">رقم الهاتف:</span>
+                  <span className="text-gray-200 font-mono text-sm">{order.phone}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500 block font-bold mb-1">رقم الواتساب:</span>
+                  <span className="text-green-400 font-mono text-sm">{order.whatsapp || order.phone}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500 block font-bold mb-1">العنوان والمحافظة:</span>
+                  <span className="text-gray-200">{order.governorate} - {order.address}</span>
                 </div>
               </div>
 
-              {/* المنتجات المطلوبة */}
+              {/* تفاصيل المنتجات والمقاسات */}
               <div className="space-y-2">
-                <p className="text-xs font-bold text-gray-400">المنتجات:</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {Array.isArray(order.items) &&
-                    order.items.map((item, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-gray-950 border border-gray-850 p-3 rounded-2xl flex justify-between items-center text-xs"
-                      >
-                        <div>
-                          <p className="font-bold text-white">{item.title}</p>
-                          <p className="text-gray-500">المقاس: {item.size} × {item.quantity}</p>
-                        </div>
-                        <span className="font-extrabold text-amber-400">{item.price * item.quantity} ج.م</span>
+                <p className="text-xs font-bold text-amber-400">المنتجات المطلوبة:</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {order.items && order.items.map((item, idx) => (
+                    <div key={idx} className="flex justify-between items-center text-xs bg-gray-950/60 p-3 rounded-xl border border-gray-800">
+                      <div>
+                        <span className="font-bold text-white block">{item.title}</span>
+                        <span className="text-amber-400 font-bold">المقاس: {item.size || 'M'}</span>
+                        <span className="text-gray-500 mr-3">الكمية: {item.quantity}</span>
                       </div>
-                    ))}
+                      <span className="font-bold text-gray-300">{item.price * item.quantity} ج.م</span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <div className="flex justify-between items-center pt-2 border-t border-gray-800/60">
-                <span className="text-xs font-bold text-gray-400">الإجمالي:</span>
-                <span className="text-xl font-black text-amber-400">{order.total_price} ج.م</span>
+              {/* الإجمالي */}
+              <div className="flex justify-between items-center border-t border-gray-850 pt-3 text-sm">
+                <span className="text-gray-400 font-bold">الإجمالي الكلي (شامل الشحن):</span>
+                <span className="text-amber-400 font-black text-lg">{order.total_price} ج.م</span>
               </div>
             </div>
           ))}
