@@ -1,41 +1,39 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../../../lib/supabase'; // تعديل المسار حسب مكان ملف supabase عندك
+import { supabase } from '../../../lib/supabase';
 
 export default function AdminChatPage() {
   const [sessions, setSessions] = useState([]);
-  const [selectedSession, setSelectedSession] = useState(null);
+  const [selectedPhone, setSelectedPhone] = useState(null);
   const [messages, setMessages] = useState([]);
   const [replyText, setReplyText] = useState('');
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef(null);
 
-  // 1. جلب المحادثات وتحديثها فورياً
   useEffect(() => {
     fetchSessions();
 
-    // استماع عام لكل الرسائل الجديدة المضافة في الجدول
+    // الاستماع الفوري للرسائل الجديدة
     const channel = supabase
-      .channel('admin_global_chat')
+      .channel('admin_chat_subscription')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'chat_messages' },
         (payload) => {
           const newMsg = payload.new;
 
-          // إذا كانت الرسالة تخص الجلسة المفتوحة حالياً
-          setSelectedSession((activeSession) => {
-            if (activeSession === newMsg.session_id) {
+          // تحديث المحادثة المفتوحة حالياً
+          setSelectedPhone((activePhone) => {
+            if (activePhone === newMsg.user_phone) {
               setMessages((prev) => {
                 if (prev.some((m) => m.id === newMsg.id)) return prev;
                 return [...prev, newMsg];
               });
             }
-            return activeSession;
+            return activePhone;
           });
 
-          // إنعاش قائمة الشات الجانبية
           fetchSessions();
         }
       )
@@ -46,12 +44,11 @@ export default function AdminChatPage() {
     };
   }, []);
 
-  // التمرير التلقائي لأسفل الشات عند فتح محادثة أو استقبال رسالة
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // جلب قائمة الجلسات وتجميعها حسب العملاء
+  // جلب كافة المحادثات وتجميعها حسب رقم التليفون (user_phone)
   async function fetchSessions() {
     const { data, error } = await supabase
       .from('chat_messages')
@@ -59,31 +56,30 @@ export default function AdminChatPage() {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('خطأ في جلب المحادثات:', error);
+      console.error('خطأ في الجلب:', error);
       setLoading(false);
       return;
     }
 
     if (data) {
-      // تجميع آخر رسالة لكل session_id
-      const sessionMap = new Map();
+      const phoneMap = new Map();
       data.forEach((item) => {
-        if (!sessionMap.has(item.session_id)) {
-          sessionMap.set(item.session_id, item);
+        if (item.user_phone && !phoneMap.has(item.user_phone)) {
+          phoneMap.set(item.user_phone, item);
         }
       });
-      setSessions(Array.from(sessionMap.values()));
+      setSessions(Array.from(phoneMap.values()));
     }
     setLoading(false);
   }
 
-  // فتح محادثة عميل معين
-  async function selectClient(sessionId) {
-    setSelectedSession(sessionId);
+  // فتح محادثة عميل برقم تليفونه
+  async function selectClient(phone) {
+    setSelectedPhone(phone);
     const { data, error } = await supabase
       .from('chat_messages')
       .select('*')
-      .eq('session_id', sessionId)
+      .eq('user_phone', phone)
       .order('created_at', { ascending: true });
 
     if (!error && data) {
@@ -91,19 +87,18 @@ export default function AdminChatPage() {
     }
   }
 
-  // إرسال رد الأدمن
+  // إرسال الرد
   const handleSendReply = async (e) => {
     e.preventDefault();
-    if (!replyText.trim() || !selectedSession) return;
+    if (!replyText.trim() || !selectedPhone) return;
 
     const text = replyText.trim();
     setReplyText('');
 
-    // إرسال تحديث متفائل للوحة الأدمن
     const tempId = Date.now();
     const tempMsg = {
       id: tempId,
-      session_id: selectedSession,
+      user_phone: selectedPhone,
       sender: 'admin',
       message: text,
       created_at: new Date().toISOString(),
@@ -114,7 +109,7 @@ export default function AdminChatPage() {
       .from('chat_messages')
       .insert([
         {
-          session_id: selectedSession,
+          user_phone: selectedPhone,
           sender: 'admin',
           message: text,
         },
@@ -155,11 +150,11 @@ export default function AdminChatPage() {
             <p className="text-xs text-gray-500 text-center py-8">لا توجد محادثات حتى الآن</p>
           ) : (
             sessions.map((sess) => {
-              const isSelected = selectedSession === sess.session_id;
+              const isSelected = selectedPhone === sess.user_phone;
               return (
                 <button
-                  key={sess.session_id}
-                  onClick={() => selectClient(sess.session_id)}
+                  key={sess.user_phone}
+                  onClick={() => selectClient(sess.user_phone)}
                   className={`w-full text-right p-3 rounded-2xl transition-all border ${
                     isSelected
                       ? 'bg-amber-500/10 border-amber-500 text-amber-400'
@@ -167,7 +162,7 @@ export default function AdminChatPage() {
                   }`}
                 >
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-xs font-bold truncate">عميل #{sess.session_id.slice(-6)}</span>
+                    <span className="text-xs font-bold truncate">📱 {sess.user_phone}</span>
                     <span className="text-[10px] text-gray-500">
                       {new Date(sess.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
                     </span>
@@ -181,19 +176,17 @@ export default function AdminChatPage() {
           )}
         </div>
 
-        {/* منطقة المحادثة الحالية */}
+        {/* منطقة الشات والرد */}
         <div className="md:col-span-2 flex flex-col justify-between p-4 bg-[#0b101d]">
-          {selectedSession ? (
+          {selectedPhone ? (
             <>
-              {/* الترويسة */}
               <div className="border-b border-gray-800 pb-3 mb-4 flex justify-between items-center">
                 <div>
-                  <h3 className="text-sm font-bold text-white">محادثة العميل #{selectedSession.slice(-6)}</h3>
+                  <h3 className="text-sm font-bold text-white">محادثة العميل ({selectedPhone})</h3>
                   <p className="text-[10px] text-emerald-400 font-bold">جلسة نشطة 🟢</p>
                 </div>
               </div>
 
-              {/* قائمة الرسائل */}
               <div className="flex-1 overflow-y-auto space-y-3 px-2 mb-4">
                 {messages.map((msg) => {
                   const isAdmin = msg.sender === 'admin';
@@ -220,7 +213,6 @@ export default function AdminChatPage() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* نموذج إرسال الرد */}
               <form onSubmit={handleSendReply} className="flex gap-2">
                 <input
                   type="text"
@@ -240,7 +232,7 @@ export default function AdminChatPage() {
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
               <span className="text-4xl mb-2">💬</span>
-              <p className="text-xs">اختر محادثة من القائمة الجانبية للبدء في الرد</p>
+              <p className="text-xs">اختر رقم عميل من القائمة للبدء في الرد عليه</p>
             </div>
           )}
         </div>
