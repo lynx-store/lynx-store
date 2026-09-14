@@ -13,10 +13,8 @@ export default function ChatWidget() {
   const [isMounted, setIsMounted] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // 1. تهيئة بيانات المتصفح عند التحميل أول مرة
   useEffect(() => {
     setIsMounted(true);
-
     let sid = localStorage.getItem('lynx_chat_session_id');
     if (!sid) {
       sid = 'sess_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
@@ -25,42 +23,35 @@ export default function ChatWidget() {
     setSessionId(sid);
 
     const savedName = localStorage.getItem('lynx_chat_user_name');
-    if (savedName) {
-      setUserName(savedName);
-    }
+    if (savedName) setUserName(savedName);
   }, []);
 
-  // 2. التمرير المباشر لأسفل الشات عند وصول رسائل جديدة
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   useEffect(() => {
-    if (isOpen) {
-      scrollToBottom();
-    }
+    if (isOpen) scrollToBottom();
   }, [messages, isOpen]);
 
-  // 3. جلب الرسائل والاستماع للتحديثات المباشرة عبر Realtime
   useEffect(() => {
     if (!sessionId) return;
 
     const fetchMessages = async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('chat_messages')
         .select('*')
         .eq('session_id', sessionId)
         .order('created_at', { ascending: true });
 
-      if (!error && data) {
-        setMessages(data);
-      }
+      if (data) setMessages(data);
     };
 
     fetchMessages();
 
+    // الاستماع الفوري للرسائل الجديدة من الأدمن أو المتصفح
     const channel = supabase
-      .channel(`chat_${sessionId}`)
+      .channel(`chat_room_${sessionId}`)
       .on(
         'postgres_changes',
         {
@@ -70,7 +61,10 @@ export default function ChatWidget() {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
-          setMessages((prev) => [...prev, payload.new]);
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === payload.new.id)) return prev;
+            return [...prev, payload.new];
+          });
         }
       )
       .subscribe();
@@ -80,7 +74,6 @@ export default function ChatWidget() {
     };
   }, [sessionId]);
 
-  // حفظ اسم العميل
   const handleSaveName = (e) => {
     e.preventDefault();
     if (!inputName.trim()) return;
@@ -88,7 +81,6 @@ export default function ChatWidget() {
     setUserName(inputName.trim());
   };
 
-  // إرسال الرسالة
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!inputText.trim() || !sessionId) return;
@@ -96,6 +88,19 @@ export default function ChatWidget() {
     const textToSend = inputText.trim();
     setInputText('');
 
+    const newMessage = {
+      id: Date.now(),
+      session_id: sessionId,
+      sender: 'user',
+      user_name: userName || 'عميل LYNX',
+      message: textToSend,
+      created_at: new Date().toISOString(),
+    };
+
+    // إضافة الرسالة للواجهة فوراً
+    setMessages((prev) => [...prev, newMessage]);
+
+    // إرسالها لـ Supabase
     const { error } = await supabase.from('chat_messages').insert([
       {
         session_id: sessionId,
@@ -106,16 +111,14 @@ export default function ChatWidget() {
     ]);
 
     if (error) {
-      console.error('Error sending message:', error);
+      console.error('فشل إرسال الرسالة:', error);
     }
   };
 
-  // حماية المكون من الـ SSR لمنع الشاشة البيضاء
   if (!isMounted) return null;
 
   return (
     <div className="fixed bottom-6 left-6 z-50">
-      {/* زر إظهار وإخفاء الشات */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
@@ -126,29 +129,19 @@ export default function ChatWidget() {
         </button>
       )}
 
-      {/* نافذة المحادثة */}
       {isOpen && (
         <div className="w-80 sm:w-96 bg-[#0f172a] border border-slate-700 rounded-2xl shadow-2xl flex flex-col h-[500px] overflow-hidden text-white">
-          {/* شريط العنوان */}
           <div className="bg-[#1e293b] p-4 flex justify-between items-center border-b border-slate-700">
             <div className="flex items-center gap-2">
               <span className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
               <h3 className="font-bold text-sm">دعم LYNX المباشر</h3>
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="text-slate-400 hover:text-white text-lg px-2"
-            >
-              ✕
-            </button>
+            <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white text-lg px-2">✕</button>
           </div>
 
-          {/* خطوة إدخال الاسم إذا لم يكن مسجلاً */}
           {!userName ? (
             <form onSubmit={handleSaveName} className="p-6 flex flex-col justify-center gap-4 flex-1">
-              <p className="text-sm text-slate-300 text-center">
-                مرحباً بك! يرجى إدخال اسمك للبدء بالتحدث مع الدعم:
-              </p>
+              <p className="text-sm text-slate-300 text-center">مرحباً بك! يرجى إدخال اسمك للبدء بالتحدث مع الدعم:</p>
               <input
                 type="text"
                 value={inputName}
@@ -157,36 +150,19 @@ export default function ChatWidget() {
                 className="w-full p-3 bg-[#1e293b] border border-slate-700 rounded-lg text-white focus:outline-none focus:border-[#e5ad35]"
                 required
               />
-              <button
-                type="submit"
-                className="w-full bg-[#e5ad35] hover:bg-[#c9952a] text-black font-bold py-3 rounded-lg transition-colors"
-              >
+              <button type="submit" className="w-full bg-[#e5ad35] hover:bg-[#c9952a] text-black font-bold py-3 rounded-lg transition-colors">
                 بدء المحادثة
               </button>
             </form>
           ) : (
             <>
-              {/* عرض الرسائل */}
               <div className="flex-1 p-4 overflow-y-auto space-y-3">
                 {messages.length === 0 ? (
-                  <p className="text-center text-xs text-slate-400 mt-8">
-                    مرحباً {userName}! كيف يمكننا مساعدتك اليوم؟
-                  </p>
+                  <p className="text-center text-xs text-slate-400 mt-8">مرحباً {userName}! كيف يمكننا مساعدتك اليوم؟</p>
                 ) : (
-                  messages.map((msg) => (
-                    <div
-                      key={msg.id || Math.random()}
-                      className={`flex flex-col ${
-                        msg.sender === 'user' ? 'items-end' : 'items-start'
-                      }`}
-                    >
-                      <div
-                        className={`max-w-[80%] p-3 rounded-xl text-sm ${
-                          msg.sender === 'user'
-                            ? 'bg-[#e5ad35] text-black rounded-br-none font-medium'
-                            : 'bg-[#1e293b] text-white rounded-bl-none border border-slate-700'
-                        }`}
-                      >
+                  messages.map((msg, index) => (
+                    <div key={msg.id || index} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
+                      <div className={`max-w-[80%] p-3 rounded-xl text-sm ${msg.sender === 'user' ? 'bg-[#e5ad35] text-black rounded-br-none font-medium' : 'bg-[#1e293b] text-white rounded-bl-none border border-slate-700'}`}>
                         {msg.message}
                       </div>
                       <span className="text-[10px] text-slate-400 mt-1 px-1">
@@ -198,7 +174,6 @@ export default function ChatWidget() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* حقل كتابة الرسالة */}
               <form onSubmit={handleSendMessage} className="p-3 bg-[#1e293b] border-t border-slate-700 flex gap-2">
                 <input
                   type="text"
@@ -207,10 +182,7 @@ export default function ChatWidget() {
                   placeholder="اكتب رسالتك..."
                   className="flex-1 p-2 bg-[#0f172a] border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-[#e5ad35]"
                 />
-                <button
-                  type="submit"
-                  className="bg-[#e5ad35] hover:bg-[#c9952a] text-black font-bold px-4 py-2 rounded-lg text-sm transition-colors"
-                >
+                <button type="submit" className="bg-[#e5ad35] hover:bg-[#c9952a] text-black font-bold px-4 py-2 rounded-lg text-sm transition-colors">
                   إرسال
                 </button>
               </form>
