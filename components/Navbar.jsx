@@ -18,20 +18,20 @@ export default function Navbar() {
 
         {/* الأيقونات والاختيارات */}
         <div className="flex items-center gap-5">
-          {/* المفضلة */}
-          <div className="relative flex items-center text-gray-300">
+          {/* رابط المفضلة */}
+          <Link href="/wishlist" className="relative flex items-center text-gray-300 hover:text-amber-400 transition-colors">
             <span className="text-xl">❤️</span>
             {wishlist.length > 0 && (
               <span className="absolute -top-1 -right-2 bg-amber-500 text-black text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center">
                 {wishlist.length}
               </span>
             )}
-          </div>
+          </Link>
 
           {/* زر السلة */}
           <button
             onClick={() => setIsCartOpen(true)}
-            className="relative flex items-center gap-2 bg-gray-900 border border-gray-800 hover:border-amber-500/50 px-4 py-2 rounded-xl transition-all"
+            className="relative flex items-center gap-2 bg-gray-900 border border-gray-800 hover:border-amber-500/50 px-4 py-2 rounded-xl transition-all cursor-pointer"
           >
             <span className="text-lg">🛒</span>
             <span className="text-xs font-bold text-gray-200 hidden sm:inline">السلة</span>
