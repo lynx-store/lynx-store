@@ -10,19 +10,18 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
 
-  // حالة اللون والمقاسات
+  // حالة اللون مع مقاساته وكمياتها
   const [colorInput, setColorInput] = useState({
     color_name: '',
     color_hex: '#000000',
     image_url: '',
-    sizes: ['S', 'M', 'L', 'XL'],
+    size_quantities: {}, // مثال: { 'M': 5, 'L': 10 }
   });
 
   const [formData, setFormData] = useState({
     title: '',
     category: 'تيشرتات',
     price: '',
-    total_quantity: '',
     video_url: '',
     description: '',
     colors: [],
@@ -38,14 +37,27 @@ export default function InventoryPage() {
     setLoading(false);
   }
 
-  const toggleSizeForColor = (size) => {
+  // تبديل اختيار المقاس وتحديد كميته
+  const toggleSize = (size) => {
     setColorInput((prev) => {
-      const exists = prev.sizes.includes(size);
-      return {
-        ...prev,
-        sizes: exists ? prev.sizes.filter((s) => s !== size) : [...prev.sizes, size],
-      };
+      const updated = { ...prev.size_quantities };
+      if (updated[size] !== undefined) {
+        delete updated[size];
+      } else {
+        updated[size] = 1; // كمية افتراضية 1 عند الاختيار
+      }
+      return { ...prev, size_quantities: updated };
     });
+  };
+
+  const handleQtyChange = (size, qty) => {
+    setColorInput((prev) => ({
+      ...prev,
+      size_quantities: {
+        ...prev.size_quantities,
+        [size]: Math.max(0, Number(qty)),
+      },
+    }));
   };
 
   const addColorToProduct = () => {
@@ -53,37 +65,58 @@ export default function InventoryPage() {
       alert('يرجى إضافة اسم اللون ورابط الصورة الخاص به');
       return;
     }
-    setFormData({ ...formData, colors: [...formData.colors, colorInput] });
-    setColorInput({ color_name: '', color_hex: '#000000', image_url: '', sizes: ['S', 'M', 'L', 'XL'] });
+    if (Object.keys(colorInput.size_quantities).length === 0) {
+      alert('يرجى تحديد مقاس واحد على الأقل مع كميته');
+      return;
+    }
+
+    const colorData = {
+      color_name: colorInput.color_name,
+      color_hex: colorInput.color_hex,
+      image_url: colorInput.image_url,
+      sizes: Object.keys(colorInput.size_quantities),
+      size_quantities: colorInput.size_quantities,
+    };
+
+    setFormData({ ...formData, colors: [...formData.colors, colorData] });
+    setColorInput({ color_name: '', color_hex: '#000000', image_url: '', size_quantities: {} });
   };
 
   const removeColor = (index) => {
     setFormData({ ...formData, colors: formData.colors.filter((_, i) => i !== index) });
   };
 
+  // حساب إجمالي الكميات المتاحة من كافة الألوان والمقاسات
+  const calculateTotalQuantity = (colorsList) => {
+    return colorsList.reduce((sum, c) => {
+      const colSum = Object.values(c.size_quantities || {}).reduce((a, b) => Number(a) + Number(b), 0);
+      return sum + colSum;
+    }, 0);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (formData.colors.length === 0) {
-      alert('يرجى إضافة لون واحد على الأقل مع صورته ومقاساته');
+      alert('يرجى إضافة لون واحد على الأقل مع مقاساته وكمياته');
       return;
     }
+
+    const totalQty = calculateTotalQuantity(formData.colors);
 
     const payload = {
       title: formData.title,
       category: formData.category,
       price: Number(formData.price),
-      total_quantity: Number(formData.total_quantity || 0),
+      total_quantity: totalQty,
       video_url: formData.video_url,
       description: formData.description,
       colors: formData.colors,
     };
 
     if (editingId) {
-      // تعديل منتج في المخزن
       const { error } = await supabase.from('inventory').update(payload).eq('id', editingId);
-      if (!error) alert('تم تعديل بيانات المخزن بنجاح! ✏️');
+      if (!error) alert('تم تعديل بيانات القطعة بالمخزن بنجاح! ✏️');
     } else {
-      // إضافة جديد للمخزن
       const { error } = await supabase.from('inventory').insert([payload]);
       if (!error) alert('تم إضافة القطعة للمخزن بنجاح! 📦');
     }
@@ -98,7 +131,6 @@ export default function InventoryPage() {
       title: item.title,
       category: item.category,
       price: item.price,
-      total_quantity: item.total_quantity || '',
       video_url: item.video_url || '',
       description: item.description || '',
       colors: item.colors || [],
@@ -107,22 +139,15 @@ export default function InventoryPage() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('هل أنت تأكد من حذف هذه القطعة من المخزن؟')) return;
+    if (!confirm('هل تريد حذف هذه القطعة من المخزن؟')) return;
     await supabase.from('inventory').delete().eq('id', id);
     fetchInventory();
   };
 
   const resetForm = () => {
     setEditingId(null);
-    setFormData({
-      title: '',
-      category: 'تيشرتات',
-      price: '',
-      total_quantity: '',
-      video_url: '',
-      description: '',
-      colors: [],
-    });
+    setFormData({ title: '', category: 'تيشرتات', price: '', video_url: '', description: '', colors: [] });
+    setColorInput({ color_name: '', color_hex: '#000000', image_url: '', size_quantities: {} });
   };
 
   if (loading) return <div className="p-12 text-center text-amber-400 font-bold">جاري تحميل المخزن...</div>;
@@ -137,23 +162,15 @@ export default function InventoryPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* نموذج الإضافة والتعديل */}
         <form onSubmit={handleSubmit} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl space-y-4 shadow-xl">
-          <div className="flex justify-between items-center">
-            <h2 className="text-lg font-bold text-amber-400">
-              {editingId ? 'تعديل قطعة في المخزن ✏️' : 'إضافة قطعة جديدة للمخزن ➕'}
-            </h2>
-            {editingId && (
-              <button type="button" onClick={resetForm} className="text-xs text-gray-400 hover:text-white">
-                إلغاء التعديل
-              </button>
-            )}
-          </div>
+          <h2 className="text-lg font-bold text-amber-400">
+            {editingId ? 'تعديل قطعة بالمخزن ✏️' : 'إضافة قطعة جديدة للمخزن ➕'}
+          </h2>
 
           <input
             type="text"
             required
-            placeholder="اسم القطعة (مثال: بنطلون LYNX كارجو)"
+            placeholder="اسم القطعة (مثل: بنطلون LYNX كارجو)"
             value={formData.title}
             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white"
@@ -174,7 +191,7 @@ export default function InventoryPage() {
             <input
               type="number"
               required
-              placeholder="سعر القطعة الأساسي"
+              placeholder="السعر الأساسي"
               value={formData.price}
               onChange={(e) => setFormData({ ...formData, price: e.target.value })}
               className="bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white"
@@ -182,30 +199,21 @@ export default function InventoryPage() {
           </div>
 
           <input
-            type="number"
-            required
-            placeholder="إجمالي عدد القطع المتاحة"
-            value={formData.total_quantity}
-            onChange={(e) => setFormData({ ...formData, total_quantity: e.target.value })}
-            className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white"
-          />
-
-          <input
             type="url"
-            placeholder="رابط فيديو القطعة (اختياري)"
+            placeholder="رابط الفيديو (اختياري)"
             value={formData.video_url}
             onChange={(e) => setFormData({ ...formData, video_url: e.target.value })}
             className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white"
           />
 
-          {/* خيارات الألوان والصور والمقاسات */}
+          {/* تخصيص المقاسات وكمياتها لكل لون */}
           <div className="border border-gray-800 p-4 rounded-2xl space-y-3 bg-gray-950/50">
-            <p className="text-xs font-bold text-amber-400">خيارات اللون والصورة والمقاسات:</p>
+            <p className="text-xs font-bold text-amber-400">اللون والمقاسات والكميات:</p>
 
             <div className="flex gap-2">
               <input
                 type="text"
-                placeholder="اسم اللون (أسود، زيتي...)"
+                placeholder="اسم اللون (أسود، أحمر...)"
                 value={colorInput.color_name}
                 onChange={(e) => setColorInput({ ...colorInput, color_name: e.target.value })}
                 className="w-1/2 bg-gray-900 border border-gray-800 rounded-xl p-2.5 text-xs text-white"
@@ -220,22 +228,22 @@ export default function InventoryPage() {
 
             <input
               type="url"
-              placeholder="رابط صورة هذا اللون تحديداً"
+              placeholder="رابط صورة هذا اللون"
               value={colorInput.image_url}
               onChange={(e) => setColorInput({ ...colorInput, image_url: e.target.value })}
               className="w-full bg-gray-900 border border-gray-800 rounded-xl p-2.5 text-xs text-white"
             />
 
             <div>
-              <p className="text-[11px] font-bold text-gray-400 mb-1.5">المقاسات المتوفرة للون:</p>
-              <div className="flex flex-wrap gap-1.5">
+              <p className="text-[11px] font-bold text-gray-400 mb-1.5">اختر المقاسات وحدد كميتها:</p>
+              <div className="flex flex-wrap gap-1.5 mb-2">
                 {ALL_SIZES.map((sz) => {
-                  const isSelected = colorInput.sizes.includes(sz);
+                  const isSelected = colorInput.size_quantities[sz] !== undefined;
                   return (
                     <button
                       key={sz}
                       type="button"
-                      onClick={() => toggleSizeForColor(sz)}
+                      onClick={() => toggleSize(sz)}
                       className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
                         isSelected ? 'bg-amber-500 text-black border-amber-500' : 'bg-gray-900 text-gray-400 border-gray-800'
                       }`}
@@ -245,6 +253,27 @@ export default function InventoryPage() {
                   );
                 })}
               </div>
+
+              {/* مدخل الكمية لكل مقاس تم اختياره */}
+              {Object.keys(colorInput.size_quantities).length > 0 && (
+                <div className="space-y-2 bg-gray-900 p-3 rounded-xl border border-gray-800 mt-2">
+                  <p className="text-[10px] text-amber-400 font-bold">الكميات المتاحة بكل مقاس:</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {Object.keys(colorInput.size_quantities).map((sz) => (
+                      <div key={sz} className="flex items-center gap-2">
+                        <span className="text-xs text-white font-bold w-8">{sz}:</span>
+                        <input
+                          type="number"
+                          min="1"
+                          value={colorInput.size_quantities[sz]}
+                          onChange={(e) => handleQtyChange(sz, e.target.value)}
+                          className="w-full bg-gray-950 border border-gray-800 rounded-lg p-1.5 text-xs text-white text-center"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <button
@@ -252,19 +281,24 @@ export default function InventoryPage() {
               onClick={addColorToProduct}
               className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-2 rounded-xl text-xs border border-gray-700"
             >
-              + اعتماد هذا اللون
+              + اعتمد هذا اللون بمقاساته
             </button>
 
+            {/* الألوان المعتمدة ومقاساتها */}
             {formData.colors.length > 0 && (
               <div className="space-y-1.5 pt-2 border-t border-gray-800">
                 {formData.colors.map((c, idx) => (
-                  <div key={idx} className="bg-gray-900 p-2 rounded-xl flex justify-between items-center text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full" style={{ backgroundColor: c.color_hex }}></span>
-                      <span className="text-white font-bold">{c.color_name}</span>
-                      <span className="text-[10px] text-amber-400">({c.sizes.join(', ')})</span>
+                  <div key={idx} className="bg-gray-900 p-2.5 rounded-xl flex justify-between items-center text-xs">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: c.color_hex }}></span>
+                        <span className="text-white font-bold">{c.color_name}</span>
+                      </div>
+                      <div className="text-[10px] text-amber-400 mt-1">
+                        {Object.entries(c.size_quantities || {}).map(([sz, q]) => `${sz}: (${q} قطعة)`).join(' | ')}
+                      </div>
                     </div>
-                    <button type="button" onClick={() => removeColor(idx)} className="text-red-400 font-bold">
+                    <button type="button" onClick={() => removeColor(idx)} className="text-red-400 font-bold px-2">
                       ✕
                     </button>
                   </div>
@@ -281,13 +315,13 @@ export default function InventoryPage() {
           ></textarea>
 
           <button type="submit" className="w-full bg-amber-500 hover:bg-amber-400 text-black font-extrabold py-3.5 rounded-xl text-xs">
-            {editingId ? 'حفظ التعديلات' : 'إضافة القطعة للمخزن 📦'}
+            {editingId ? 'حفظ التعديلات' : `حفظ القطعة بالمخزن (إجمالي الكمية: ${calculateTotalQuantity(formData.colors)}) 📦`}
           </button>
         </form>
 
         {/* عرض قائمة قطع المخزن */}
         <div className="lg:col-span-2 space-y-4">
-          <h2 className="text-lg font-bold text-white">قطع المخزن المسجلة ({inventory.length})</h2>
+          <h2 className="text-lg font-bold text-white">المخزن الحالي ({inventory.length})</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {inventory.map((item) => (
               <div key={item.id} className="bg-gray-900 border border-gray-800 p-4 rounded-2xl space-y-3">
@@ -298,9 +332,21 @@ export default function InventoryPage() {
                   <div>
                     <h3 className="text-sm font-bold text-white">{item.title}</h3>
                     <p className="text-xs text-amber-400 font-bold">{item.price} ج.م</p>
-                    <p className="text-[10px] text-gray-400">إجمالي الكمية: {item.total_quantity} قطعة</p>
-                    <p className="text-[10px] text-gray-400">الألوان: {item.colors?.length || 0}</p>
+                    <p className="text-[11px] text-gray-300 font-bold mt-1">
+                      إجمالي المتبقي بالمخزن: <span className="text-amber-400">{item.total_quantity}</span> قطعة
+                    </p>
                   </div>
+                </div>
+
+                <div className="border-t border-gray-800 pt-2 space-y-1">
+                  {item.colors?.map((col, idx) => (
+                    <div key={idx} className="text-[10px] text-gray-400 flex justify-between">
+                      <span>🎨 {col.color_name}:</span>
+                      <span>
+                        {Object.entries(col.size_quantities || {}).map(([sz, q]) => `${sz}: ${q}`).join(', ')}
+                      </span>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="flex justify-between border-t border-gray-800 pt-2 text-xs">
