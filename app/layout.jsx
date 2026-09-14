@@ -1,6 +1,11 @@
 import './globals.css';
-import ChatWidget from '../components/ChatWidget';
+import dynamic from 'next/dynamic';
 import { StoreProvider } from '../context/StoreContext';
+
+// تحميل الشات ديناميكياً على متصفح العميل فقط
+const ChatWidget = dynamic(() => import('../components/ChatWidget'), {
+  ssr: false,
+});
 
 export const metadata = {
   title: 'LYNX Streetwear | المتجر الرسمي',
