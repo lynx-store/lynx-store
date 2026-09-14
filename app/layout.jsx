@@ -1,5 +1,7 @@
 import './globals.css';
-import ChatWidget from '../components/ChatWidget'; // عدّل المسار إذا كان ملف الشات في مكان آخر (مثلاً: '@/components/ChatWidget')
+import ChatWidget from '../components/ChatWidget';
+import { CartProvider } from '../context/CartContext'; // تأكد من اسم ومسار ملف CartContext لديك
+import { WishlistProvider } from '../context/WishlistContext'; // تأكد من اسم ومسار ملف WishlistContext لديك
 
 export const metadata = {
   title: 'LYNX Streetwear | المتجر الرسمي',
@@ -10,11 +12,15 @@ export default function RootLayout({ children }) {
   return (
     <html lang="ar" dir="rtl">
       <body className="bg-[#050811] text-white min-h-screen antialiased">
-        {/* محتوى الصفحات */}
-        {children}
+        <CartProvider>
+          <WishlistProvider>
+            {/* محتوى الصفحات */}
+            {children}
 
-        {/* أيقونة الشات العائمة المباشرة للعميل */}
-        <ChatWidget />
+            {/* أيقونة الشات العائمة المباشرة */}
+            <ChatWidget />
+          </WishlistProvider>
+        </CartProvider>
       </body>
     </html>
   );
