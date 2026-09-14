@@ -5,27 +5,21 @@ import { useStore } from '../../context/StoreContext';
 import { supabase } from '../../lib/supabase';
 import Link from 'next/link';
 
-// قائمة جميع محافظات مصر
-const EGYPT_GOVERNORATES = [
-  'القاهرة', 'الجيزة', 'الإسكندرية', 'الفيوم', 'سوهاج', 'الشرقية', 'الدقهلية',
-  'القليوبية', 'المنوفية', 'الغربية', 'البحيرة', 'كفر الشيخ', 'دمياط', 'بورسعيد',
-  'الإسماعيلية', 'السويس', 'شمال سيناء', 'جنوب سيناء', 'بني سويف', 'المنيا',
-  'أسيوط', 'قنا', 'الأقصر', 'أسوان', 'البحر الأحمر', 'الوادي الجديد', 'مطروح'
-];
-
 export default function CheckoutPage() {
-  const { cart, clearCart } = useStore();
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-
+  const { cart, cartTotal, clearCart } = useStore();
+  
   const [formData, setFormData] = useState({
-    customer_name: '',
+    name: '',
     phone: '',
     governorate: 'القاهرة',
     address: '',
   });
 
-  const totalPrice = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const [loading, setLoading] = useState(false);
+  const [orderSubmitted, setOrderSubmitted] = useState(false);
+
+  // رقم واتساب المتجر (اكتب رقمك هنا بكود الدولة بدون +)
+  const STORE_WHATSAPP = '201130219615'; 
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -36,165 +30,200 @@ export default function CheckoutPage() {
     if (cart.length === 0) return;
 
     setLoading(true);
+
     try {
-      // إرسال البيانات مع تجربة اسمي الحقليين (phone و phone_number) لضمان التوافق مع الجدول
-      const payload = {
-        customer_name: formData.customer_name,
-        phone: formData.phone,
-        phone_number: formData.phone,
-        governorate: formData.governorate,
-        address: formData.address,
-        items: cart,
-        total_price: totalPrice,
-      };
+      // 1. حفظ الطلب في قاعدة البيانات Supabase
+      const { data, error } = await supabase.from('orders').insert([
+        {
+          customer_name: formData.name,
+          phone: formData.phone,
+          governorate: formData.governorate,
+          address: formData.address,
+          items: cart,
+          total_price: cartTotal + 50, // السعر + الشحن
+          status: 'قيد الانتظار',
+        },
+      ]);
 
-      const { error } = await supabase.from('orders').insert([payload]);
+      if (error) throw error;
 
-      if (error) {
-        // محاولة إرسال بدون phone_number في حال كان الجدول يحتوي على phone فقط
-        delete payload.phone_number;
-        const { error: retryError } = await supabase.from('orders').insert([payload]);
-        if (retryError) throw retryError;
-      }
+      // 2. تجهيز رسالة الواتساب التلقائية
+      let itemsListText = cart
+        .map((item) => `• ${item.title} (مقاس: ${item.size || 'M'}) × ${item.quantity} = ${item.price * item.quantity} ج.م`)
+        .join('\n');
 
-      setSuccess(true);
+      const whatsappMessage = `🔥 *طلب جديد من متجر LYNX* 🔥\n\n` +
+        `👤 *الاسم:* ${formData.name}\n` +
+        `📞 *الهاتف:* ${formData.phone}\n` +
+        `📍 *المحافظة:* ${formData.governorate}\n` +
+        `🏠 *العنوان:* ${formData.address}\n\n` +
+        `🛍️ *الطلبات:*\n${itemsListText}\n\n` +
+        `💵 *إجمالي المنتجات:* ${cartTotal} ج.م\n` +
+        `🚚 *الشحن:* 50 ج.م\n` +
+        `💰 *المبلغ الإجمالي:* ${cartTotal + 50} ج.م`;
+
+      // 3. تفريغ السلة وتجهيز رابط التحويل
       clearCart();
+      setOrderSubmitted(true);
+
+      const encodedMessage = encodeURIComponent(whatsappMessage);
+      const whatsappUrl = `https://wa.me/${STORE_WHATSAPP}?text=${encodedMessage}`;
+
+      // تحويل العميل لواتساب تلقائياً بعد ثانية
+      setTimeout(() => {
+        window.open(whatsappUrl, '_blank');
+      }, 1000);
+
     } catch (err) {
-      console.error('Checkout Error:', err);
-      alert('خطأ من السيرفر: ' + (err.message || JSON.stringify(err)));
+      console.error(err);
+      alert('حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مرة أخرى.');
     } finally {
       setLoading(false);
     }
   };
 
-  if (success) {
+  if (orderSubmitted) {
     return (
-      <main className="max-w-2xl mx-auto p-6 md:p-12 text-center space-y-6" dir="rtl">
-        <div className="bg-gray-900 border border-amber-500/30 p-10 rounded-3xl space-y-4 shadow-2xl">
-          <span className="text-6xl">🎉</span>
-          <h2 className="text-3xl font-black text-amber-400">تم تسجيل طلبك بنجاح!</h2>
-          <p className="text-gray-300 text-sm leading-relaxed">
-            شكراً لثقتك بـ <strong className="text-amber-400">LYNX</strong>. تواصلنا معاك هيكون قريب جداً لتأكيد الشحن والتسليم.
+      <main className="max-w-xl mx-auto p-6 md:p-12 text-center space-y-6" dir="rtl">
+        <div className="bg-gray-900 border border-gray-800 p-8 rounded-3xl space-y-4 shadow-2xl">
+          <span className="text-6xl block">🎉</span>
+          <h1 className="text-2xl font-black text-amber-400">تم تسجيل طلبك بنجاح!</h1>
+          <p className="text-xs text-gray-400 leading-relaxed">
+            شكرًا لثقتك بـ LYNX. يتم الآن تحويلك إلى الواتساب لتأكيد تفاصيل الشحن والمتابعة معكم فوراً.
           </p>
-          <Link
-            href="/"
-            className="inline-block bg-amber-500 hover:bg-amber-400 text-black font-extrabold px-8 py-3.5 rounded-xl transition-all mt-4"
-          >
-            العودة للمتجر 🛍️
-          </Link>
+          <div className="pt-4">
+            <Link
+              href="/"
+              className="inline-block bg-amber-500 hover:bg-amber-400 text-black font-extrabold px-6 py-3 rounded-xl text-xs transition-all"
+            >
+              العودة للمتجر 🛍️
+            </Link>
+          </div>
         </div>
       </main>
     );
   }
 
+  if (cart.length === 0) {
+    return (
+      <main className="max-w-xl mx-auto p-12 text-center space-y-4" dir="rtl">
+        <p className="text-4xl">🛒</p>
+        <p className="text-gray-400 font-bold">سلة التسوق فارغة تماماً.</p>
+        <Link href="/" className="inline-block bg-amber-500 text-black font-bold px-6 py-2.5 rounded-xl text-xs">
+          تصفح المنتجات
+        </Link>
+      </main>
+    );
+  }
+
   return (
-    <main className="max-w-4xl mx-auto p-6 md:p-12 space-y-8" dir="rtl">
-      <h1 className="text-3xl font-black text-white border-b border-gray-800 pb-4">
-        إتمام الطلب 🚀
+    <main className="max-w-4xl mx-auto p-6 md:p-12" dir="rtl">
+      <h1 className="text-3xl font-black text-white mb-8 border-b border-gray-800 pb-4">
+        إتمام الشراء 📦
       </h1>
 
-      {cart.length === 0 ? (
-        <div className="text-center py-16 bg-gray-900 border border-gray-800 rounded-3xl space-y-4">
-          <p className="text-gray-400 font-semibold">السلة فارغة، أضف بعض المنتجات أولاً!</p>
-          <Link
-            href="/"
-            className="inline-block bg-amber-500 text-black font-extrabold px-6 py-2.5 rounded-xl"
-          >
-            تصفح المنتجات
-          </Link>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* بيانات الشحن */}
-          <form onSubmit={handleSubmit} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl space-y-4">
-            <h2 className="text-lg font-bold text-amber-400 mb-2">بيانات التوصيل</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* نموذج البيانات */}
+        <form onSubmit={handleSubmit} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl space-y-4 shadow-xl">
+          <h2 className="text-lg font-bold text-amber-400">بيانات الشحن</h2>
+          
+          <div>
+            <label className="block text-xs font-bold text-gray-400 mb-1">الاسم بالكامل</label>
+            <input
+              type="text"
+              name="name"
+              required
+              value={formData.name}
+              onChange={handleChange}
+              placeholder="مثال: عبدالرحيم محمد"
+              className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-amber-500"
+            />
+          </div>
 
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">الاسم بالكامل</label>
-              <input
-                type="text"
-                name="customer_name"
-                required
-                value={formData.customer_name}
-                onChange={handleChange}
-                placeholder="أدخل اسمك"
-                className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-amber-500"
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-400 mb-1">رقم الهاتف (للتواصل وتأكيد الشحن)</label>
+            <input
+              type="tel"
+              name="phone"
+              required
+              value={formData.phone}
+              onChange={handleChange}
+              placeholder="010XXXXXXXX"
+              className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-amber-500"
+            />
+          </div>
 
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">رقم الهاتف</label>
-              <input
-                type="tel"
-                name="phone"
-                required
-                value={formData.phone}
-                onChange={handleChange}
-                placeholder="01xxxxxxxx"
-                className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-amber-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">المحافظة</label>
-              <select
-                name="governorate"
-                value={formData.governorate}
-                onChange={handleChange}
-                className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-amber-500"
-              >
-                {EGYPT_GOVERNORATES.map((gov) => (
-                  <option key={gov} value={gov}>
-                    {gov}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">العنوان بالتفصيل</label>
-              <textarea
-                name="address"
-                required
-                rows="3"
-                value={formData.address}
-                onChange={handleChange}
-                placeholder="اسم الشارع / رقم العمارة / المنطقة"
-                className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-amber-500 resize-none"
-              ></textarea>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-amber-500 hover:bg-amber-400 text-black font-extrabold py-3.5 rounded-xl transition-all disabled:opacity-50 mt-4 cursor-pointer"
+          <div>
+            <label className="block text-xs font-bold text-gray-400 mb-1">المحافظة</label>
+            <select
+              name="governorate"
+              value={formData.governorate}
+              onChange={handleChange}
+              className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-amber-500"
             >
-              {loading ? 'جاري تأكيد الطلب...' : `تأكيد الطلب (${totalPrice} ج.م)`}
-            </button>
-          </form>
+              <option value="القاهرة">القاهرة</option>
+              <option value="الجيزة">الجيزة</option>
+              <option value="الإسكندرية">الإسكندرية</option>
+              <option value="الفيوم">الفيوم</option>
+              <option value="سوهاج">سوهاج</option>
+              <option value="باقي المحافظات">باقي المحافظات</option>
+            </select>
+          </div>
 
-          {/* ملخص السلة */}
-          <div className="bg-gray-900 border border-gray-800 p-6 rounded-3xl h-fit space-y-4">
-            <h2 className="text-lg font-bold text-white border-b border-gray-800 pb-3">ملخص الطلب</h2>
-            <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-              {cart.map((item, idx) => (
-                <div key={idx} className="flex justify-between items-center text-sm">
-                  <div>
-                    <p className="font-bold text-gray-200">{item.title}</p>
-                    <p className="text-xs text-gray-500">المقاس: {item.size} × {item.quantity}</p>
-                  </div>
-                  <span className="font-bold text-amber-400">{item.price * item.quantity} ج.م</span>
+          <div>
+            <label className="block text-xs font-bold text-gray-400 mb-1">العنوان بالتفصيل</label>
+            <textarea
+              name="address"
+              required
+              rows="3"
+              value={formData.address}
+              onChange={handleChange}
+              placeholder="اسم الشارع - رقم المبنى - المنطقة"
+              className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-amber-500"
+            ></textarea>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-amber-500 hover:bg-amber-400 text-black font-extrabold py-4 rounded-xl transition-all shadow-xl cursor-pointer disabled:opacity-50 text-sm"
+          >
+            {loading ? 'جاري إرسال الطلب...' : 'تأكيد الطلب عبر الواتساب 💬'}
+          </button>
+        </form>
+
+        {/* ملخص الطلب */}
+        <div className="bg-gray-900 border border-gray-800 p-6 rounded-3xl space-y-4 shadow-xl h-fit">
+          <h2 className="text-lg font-bold text-amber-400">ملخص الفاتورة</h2>
+          
+          <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+            {cart.map((item, idx) => (
+              <div key={idx} className="flex justify-between items-center text-xs bg-gray-950 p-3 rounded-xl border border-gray-850">
+                <div>
+                  <p className="font-bold text-white">{item.title}</p>
+                  <p className="text-gray-500">المقاس: {item.size || 'M'} × {item.quantity}</p>
                 </div>
-              ))}
-            </div>
+                <span className="font-bold text-amber-400">{item.price * item.quantity} ج.م</span>
+              </div>
+            ))}
+          </div>
 
-            <div className="border-t border-gray-800 pt-4 flex justify-between items-center text-lg font-black">
-              <span className="text-gray-300">الإجمالي النهائي:</span>
-              <span className="text-amber-400">{totalPrice} ج.م</span>
+          <div className="border-t border-gray-800 pt-4 space-y-2 text-xs">
+            <div className="flex justify-between text-gray-400">
+              <span>المجموع الفرعي:</span>
+              <span>{cartTotal} ج.م</span>
+            </div>
+            <div className="flex justify-between text-gray-400">
+              <span>مصاريف الشحن:</span>
+              <span>50 ج.م</span>
+            </div>
+            <div className="flex justify-between text-base font-black text-amber-400 pt-2 border-t border-gray-800">
+              <span>الإجمالي الكلي:</span>
+              <span>{cartTotal + 50} ج.م</span>
             </div>
           </div>
         </div>
-      )}
+      </div>
     </main>
   );
 }
