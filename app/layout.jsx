@@ -1,4 +1,5 @@
 import './globals.css';
+import ChatWidget from '../components/ChatWidget';
 import { StoreProvider } from '../context/StoreContext';
 
 export const metadata = {
@@ -12,6 +13,7 @@ export default function RootLayout({ children }) {
       <body className="bg-[#050811] text-white min-h-screen antialiased">
         <StoreProvider>
           {children}
+          <ChatWidget />
         </StoreProvider>
       </body>
     </html>
