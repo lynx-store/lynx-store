@@ -28,7 +28,7 @@ export default function ProductDetailClient({ productId }) {
         setProduct(data);
       } catch (err) {
         console.error(err);
-      } fontally {
+      } finally {
         setLoading(false);
       }
     }
