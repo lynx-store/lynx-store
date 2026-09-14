@@ -41,18 +41,22 @@ export default function CheckoutPage() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.from('orders').insert([
-        {
-          customer_name: formData.name,
-          phone: formData.phone,
-          whatsapp: formData.whatsapp || formData.phone, // لو متبعتش ياخد رقم الفون الأساسي
-          governorate: formData.governorate,
-          address: formData.address,
-          items: cart,
-          total_price: grandTotal,
-          status: 'قيد الانتظار',
-        },
-      ]);
+      const orderData = {
+        customer_name: formData.name,
+        phone: formData.phone,
+        governorate: formData.governorate,
+        address: formData.address,
+        items: cart,
+        total_price: grandTotal,
+        status: 'قيد الانتظار',
+      };
+
+      // إضافة رقم الواتساب إلى كائن البيانات
+      if (formData.whatsapp) {
+        orderData.whatsapp = formData.whatsapp;
+      }
+
+      const { error } = await supabase.from('orders').insert([orderData]);
 
       if (error) throw error;
 
@@ -60,7 +64,7 @@ export default function CheckoutPage() {
       setOrderSubmitted(true);
     } catch (err) {
       console.error(err);
-      alert('حدث خطأ أثناء إرسال الطلب: ' + (err.message || 'حاول مرة أخرى'));
+      alert('حدث خطأ أثناء إرسال الطلب: ' + (err.message || 'يرجى المحاولة مرة أخرى'));
     } finally {
       setLoading(false);
     }
