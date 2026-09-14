@@ -1,5 +1,5 @@
 import './globals.css';
-import Providers from '../components/Providers';
+import { StoreProvider } from '../context/StoreContext';
 
 export const metadata = {
   title: 'LYNX Streetwear | المتجر الرسمي',
@@ -10,9 +10,9 @@ export default function RootLayout({ children }) {
   return (
     <html lang="ar" dir="rtl">
       <body className="bg-[#050811] text-white min-h-screen antialiased">
-        <Providers>
+        <StoreProvider>
           {children}
-        </Providers>
+        </StoreProvider>
       </body>
     </html>
   );
