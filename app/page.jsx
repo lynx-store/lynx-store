@@ -3,14 +3,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../context/StoreContext';
-import ChatWidget from '../components/ChatWidget';
 
 export default function HomePage() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('الكل');
   const [favorites, setFavorites] = useState([]);
-  const [activeProduct, setActiveProduct] = useState(null); // للمودال وتكبير التفاصيل
+  const [activeProduct, setActiveProduct] = useState(null);
 
   // حالات الاختيار داخل مودال المنتج
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
@@ -20,14 +19,24 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchProducts();
-    const savedFavs = JSON.parse(localStorage.getItem('lynx_favs') || '[]');
-    setFavorites(savedFavs);
+    // قراءة localStorage فقط بعد تأكيد التشغيل داخل المتصفح
+    try {
+      const savedFavs = JSON.parse(localStorage.getItem('lynx_favs') || '[]');
+      setFavorites(savedFavs);
+    } catch (err) {
+      console.error("Error reading localStorage:", err);
+    }
   }, []);
 
   const fetchProducts = async () => {
-    const { data } = await supabase.from('products').select('*').order('id', { ascending: false });
-    if (data) setProducts(data);
-    setLoading(false);
+    try {
+      const { data, error } = await supabase.from('products').select('*').order('id', { ascending: false });
+      if (!error && data) setProducts(data);
+    } catch (err) {
+      console.error("Error fetching products:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // تبديل المفضلة
@@ -39,7 +48,9 @@ export default function HomePage() {
       updated = [...favorites, product];
     }
     setFavorites(updated);
-    localStorage.setItem('lynx_favs', JSON.stringify(updated));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('lynx_favs', JSON.stringify(updated));
+    }
   };
 
   // تصفية المنتجات حسب الفئة أو قسم العروض
@@ -145,7 +156,7 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  {/* الألوان المتاحة في الكارت */}
+                  {/* الألوان المتاحة */}
                   <div className="flex items-center gap-1.5 pt-1">
                     {product.colors?.map((c, i) => (
                       <span key={i} className="w-3 h-3 rounded-full border border-gray-700 shadow-inner" style={{ backgroundColor: c.color_hex }}></span>
@@ -165,14 +176,13 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* مودال التفاصيل والتخصيص قبل الإضافة للسلة */}
+      {/* مودال التفاصيل والتخصيص */}
       {activeProduct && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-gray-900 border border-gray-800 rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 relative space-y-6">
             <button onClick={() => setActiveProduct(null)} className="absolute top-4 left-4 text-gray-400 hover:text-white text-xl font-bold">✕</button>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* عرض صورة اللون المختار */}
               <div className="space-y-3">
                 <img
                   src={activeProduct.colors?.[selectedColorIndex]?.image_url || activeProduct.image_url}
@@ -180,7 +190,6 @@ export default function HomePage() {
                   className="w-full aspect-square object-cover rounded-2xl border border-gray-800"
                 />
                 
-                {/* معينة فيديو إن وجد */}
                 {activeProduct.video_url && (
                   <a
                     href={activeProduct.video_url}
@@ -193,7 +202,6 @@ export default function HomePage() {
                 )}
               </div>
 
-              {/* الخيارات والتفاصيل */}
               <div className="space-y-4">
                 <h2 className="text-xl font-black text-white">{activeProduct.title}</h2>
                 <p className="text-xs text-gray-400 leading-relaxed">{activeProduct.description || 'لا يوجد وصف مضاف.'}</p>
@@ -253,9 +261,6 @@ export default function HomePage() {
           </div>
         </div>
       )}
-
-      {/* مكون الشات المباشر مع الدعم */}
-      <ChatWidget />
     </main>
   );
 }
