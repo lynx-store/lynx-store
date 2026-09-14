@@ -18,7 +18,7 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(false);
   const [orderSubmitted, setOrderSubmitted] = useState(false);
 
-  // رقم واتساب المتجر (اكتب رقمك هنا بكود الدولة بدون +)
+  // رقم واتساب المتجر الخاص بك مصحح بكود مصر
   const STORE_WHATSAPP = '201130219615'; 
 
   const handleChange = (e) => {
@@ -40,14 +40,14 @@ export default function CheckoutPage() {
           governorate: formData.governorate,
           address: formData.address,
           items: cart,
-          total_price: cartTotal + 50, // السعر + الشحن
+          total_price: cartTotal + 50,
           status: 'قيد الانتظار',
         },
       ]);
 
       if (error) throw error;
 
-      // 2. تجهيز رسالة الواتساب التلقائية
+      // 2. تجهيز نص الرسالة
       let itemsListText = cart
         .map((item) => `• ${item.title} (مقاس: ${item.size || 'M'}) × ${item.quantity} = ${item.price * item.quantity} ج.م`)
         .join('\n');
@@ -62,17 +62,14 @@ export default function CheckoutPage() {
         `🚚 *الشحن:* 50 ج.م\n` +
         `💰 *المبلغ الإجمالي:* ${cartTotal + 50} ج.م`;
 
-      // 3. تفريغ السلة وتجهيز رابط التحويل
       clearCart();
       setOrderSubmitted(true);
 
+      // 3. التحويل المباشر للواتساب
       const encodedMessage = encodeURIComponent(whatsappMessage);
-      const whatsappUrl = `https://wa.me/${STORE_WHATSAPP}?text=${encodedMessage}`;
+      const whatsappUrl = `https://api.whatsapp.com/send?phone=${STORE_WHATSAPP}&text=${encodedMessage}`;
 
-      // تحويل العميل لواتساب تلقائياً بعد ثانية
-      setTimeout(() => {
-        window.open(whatsappUrl, '_blank');
-      }, 1000);
+      window.location.href = whatsappUrl;
 
     } catch (err) {
       console.error(err);
@@ -89,7 +86,7 @@ export default function CheckoutPage() {
           <span className="text-6xl block">🎉</span>
           <h1 className="text-2xl font-black text-amber-400">تم تسجيل طلبك بنجاح!</h1>
           <p className="text-xs text-gray-400 leading-relaxed">
-            شكرًا لثقتك بـ LYNX. يتم الآن تحويلك إلى الواتساب لتأكيد تفاصيل الشحن والمتابعة معكم فوراً.
+            جاري تحويلك الآن لتطبيق الواتساب لتأكيد الطلب...
           </p>
           <div className="pt-4">
             <Link
@@ -123,7 +120,6 @@ export default function CheckoutPage() {
       </h1>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* نموذج البيانات */}
         <form onSubmit={handleSubmit} className="bg-gray-900 border border-gray-800 p-6 rounded-3xl space-y-4 shadow-xl">
           <h2 className="text-lg font-bold text-amber-400">بيانات الشحن</h2>
           
@@ -135,13 +131,13 @@ export default function CheckoutPage() {
               required
               value={formData.name}
               onChange={handleChange}
-              placeholder="مثال: عبدالرحيم محمد"
+              placeholder="الاسم"
               className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-amber-500"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-400 mb-1">رقم الهاتف (للتواصل وتأكيد الشحن)</label>
+            <label className="block text-xs font-bold text-gray-400 mb-1">رقم الهاتف</label>
             <input
               type="tel"
               name="phone"
@@ -178,7 +174,7 @@ export default function CheckoutPage() {
               rows="3"
               value={formData.address}
               onChange={handleChange}
-              placeholder="اسم الشارع - رقم المبنى - المنطقة"
+              placeholder="اسم الشارع - رقم المبنى"
               className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-amber-500"
             ></textarea>
           </div>
@@ -192,7 +188,6 @@ export default function CheckoutPage() {
           </button>
         </form>
 
-        {/* ملخص الطلب */}
         <div className="bg-gray-900 border border-gray-800 p-6 rounded-3xl space-y-4 shadow-xl h-fit">
           <h2 className="text-lg font-bold text-amber-400">ملخص الفاتورة</h2>
           
