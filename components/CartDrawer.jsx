@@ -1,105 +1,168 @@
 'use client';
 
-import { useStore } from '../context/StoreContext';
-import Link from 'next/link';
+import { useState, useEffect, useRef } from 'react';
+import { supabase } from '../lib/supabase'; // ضبط المسار حسب ملف السوبابيس عندك
 
-export default function CartDrawer() {
-  const { cart, isCartOpen, setIsCartOpen, removeFromCart, updateQuantity } = useStore();
+export default function ChatWidget() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [inputText, setInputText] = useState('');
+  const [sessionId, setSessionId] = useState('');
+  const messagesEndRef = useRef(null);
 
-  const totalPrice = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  useEffect(() => {
+    // 1. توليد أو جلب معرف ثانٍ ومستمر لمتصفح العميل (Session ID)
+    let sid = localStorage.getItem('lynx_chat_session');
+    if (!sid) {
+      sid = 'user_' + Math.random().toString(36).substring(2, 9);
+      localStorage.setItem('lynx_chat_session', sid);
+    }
+    setSessionId(sid);
 
-  if (!isCartOpen) return null;
+    // 2. جلب المحادثات القديمة للعميل
+    fetchMessages(sid);
+
+    // 3. الاستماع في الوقت الفعلي للردود القادمة من الأدمن
+    const channel = supabase
+      .channel(`chat_realtime_${sid}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `session_id=eq.${sid}`,
+        },
+        (payload) => {
+          const newMsg = payload.new;
+          setMessages((prev) => {
+            // منع تكرار الرسالة لو كانت مضافة بالفعل
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isOpen]);
+
+  async function fetchMessages(sid) {
+    const { data } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('session_id', sid)
+      .order('created_at', { ascending: true });
+
+    if (data && data.length > 0) {
+      setMessages(data);
+    } else {
+      // رسالة الترحيب التلقائية الأولى
+      setMessages([
+        {
+          id: 'welcome',
+          sender: 'admin',
+          message: 'أهلاً بك في LYNX 🐆 ! تم استلام رسالتك وسنرد عليك في أسرع وقت ممكن.',
+        },
+      ]);
+    }
+  }
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!inputText.trim() || !sessionId) return;
+
+    const textToSend = inputText;
+    setInputText('');
+
+    // إرسال الرسالة إلى جدول Supabase
+    const { error } = await supabase.from('chat_messages').insert([
+      {
+        session_id: sessionId,
+        sender: 'user',
+        message: textToSend,
+      },
+    ]);
+
+    if (error) {
+      console.error('Error sending message:', error);
+      alert('حدث خطأ أثناء إرسال الرسالة، حاول مرة أخرى.');
+    }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      {/* الخلفية المظلمة */}
-      <div
-        onClick={() => setIsCartOpen(false)}
-        className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity"
-      ></div>
+    <div className="fixed bottom-5 left-5 z-50 font-sans" dir="rtl">
+      {/* زر فتح/إغلاق الشات */}
+      {!isOpen && (
+        <button
+          onClick={() => setIsOpen(true)}
+          className="bg-amber-500 hover:bg-amber-400 text-black font-extrabold px-5 py-3 rounded-full shadow-2xl flex items-center gap-2 text-sm transition-all transform hover:scale-105"
+        >
+          💬 دعم LYNX المباشر
+        </button>
+      )}
 
-      {/* النافذة الجانبية */}
-      <div className="relative w-full max-w-md bg-gray-900 border-r border-gray-800 h-full shadow-2xl flex flex-col z-10 p-6 overflow-hidden">
-        {/* هيدر السلة */}
-        <div className="flex justify-between items-center pb-4 border-b border-gray-800">
-          <h3 className="text-xl font-bold text-white flex items-center gap-2">
-            <span>🛒</span> سلة التسوق
-          </h3>
-          <button
-            onClick={() => setIsCartOpen(false)}
-            className="text-gray-400 hover:text-amber-400 text-2xl font-bold transition-colors"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* المنتجات بالسلة */}
-        <div className="flex-1 overflow-y-auto my-4 space-y-4 divide-y divide-gray-800/50 pr-1">
-          {cart.length === 0 ? (
-            <div className="text-center py-20 text-gray-500 space-y-3">
-              <p className="text-4xl">🛍️</p>
-              <p className="text-sm font-semibold">سلتك فارغة حالياً</p>
-            </div>
-          ) : (
-            cart.map((item, index) => (
-              <div key={index} className="pt-4 flex gap-4 items-center justify-between">
-                <img
-                  src={item.image_url || '/placeholder.png'}
-                  alt={item.title}
-                  className="w-16 h-16 object-cover rounded-xl bg-gray-950 border border-gray-800"
-                />
-                <div className="flex-1">
-                  <h4 className="text-sm font-bold text-white line-clamp-1">{item.title}</h4>
-                  <p className="text-xs text-amber-400 font-bold mt-1">{item.price} ج.م</p>
-                  <p className="text-[10px] text-gray-400">المقاس: {item.size}</p>
-                </div>
-
-                {/* أزرار الكمية */}
-                <div className="flex items-center border border-gray-800 rounded-lg overflow-hidden bg-gray-950">
-                  <button
-                    onClick={() => updateQuantity(index, -1)}
-                    className="px-2 py-1 text-gray-400 hover:text-amber-400 text-xs"
-                  >
-                    -
-                  </button>
-                  <span className="px-2 text-xs font-bold">{item.quantity}</span>
-                  <button
-                    onClick={() => updateQuantity(index, 1)}
-                    className="px-2 py-1 text-gray-400 hover:text-amber-400 text-xs"
-                  >
-                    +
-                  </button>
-                </div>
-
-                {/* زر الحذف */}
-                <button
-                  onClick={() => removeFromCart(index)}
-                  className="text-red-400 hover:text-red-300 text-xs p-1"
-                >
-                  🗑️
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* الفوتر والإجمالي */}
-        {cart.length > 0 && (
-          <div className="border-t border-gray-800 pt-4 space-y-4">
-            <div className="flex justify-between items-center text-lg font-black">
-              <span className="text-gray-300">الإجمالي:</span>
-              <span className="text-amber-400">{totalPrice} ج.م</span>
-            </div>
-            <Link
-              href="/checkout"
-              onClick={() => setIsCartOpen(false)}
-              className="block text-center w-full bg-amber-500 hover:bg-amber-400 text-black font-extrabold py-3.5 rounded-xl transition-all shadow-lg"
+      {/* نافذة الشات */}
+      {isOpen && (
+        <div className="w-80 sm:w-96 h-[480px] bg-[#0b101d] border border-gray-800 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+          {/* ترويسة النافذة */}
+          <div className="bg-[#050811] p-4 border-b border-gray-800 flex justify-between items-center">
+            <h3 className="text-amber-400 font-black text-sm flex items-center gap-2">
+              دعم LYNX المباشر 🐆
+            </h3>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="text-gray-400 hover:text-white font-bold text-lg"
             >
-              متابعة إتمام الطلب 🚀
-            </Link>
+              ✕
+            </button>
           </div>
-        )}
-      </div>
+
+          {/* منطقة عرض الرسائل */}
+          <div className="flex-1 p-4 overflow-y-auto space-y-3">
+            {messages.map((msg, index) => (
+              <div
+                key={msg.id || index}
+                className={`flex ${msg.sender === 'user' ? 'justify-start' : 'justify-end'}`}
+              >
+                <div
+                  className={`max-w-[80%] p-3 rounded-2xl text-xs font-medium ${
+                    msg.sender === 'user'
+                      ? 'bg-amber-500 text-black font-bold rounded-tr-none'
+                      : 'bg-[#172033] text-white border border-gray-800 rounded-tl-none'
+                  }`}
+                >
+                  {msg.message}
+                </div>
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* نموذج إرسال الرسالة */}
+          <form onSubmit={handleSendMessage} className="p-3 bg-[#050811] border-t border-gray-800 flex gap-2">
+            <input
+              type="text"
+              placeholder="اكتب رسالتك..."
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              className="flex-1 bg-[#0b101d] border border-gray-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+            />
+            <button
+              type="submit"
+              className="bg-amber-500 hover:bg-amber-400 text-black font-extrabold px-4 py-2 rounded-xl text-xs transition-all"
+            >
+              إرسال
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
