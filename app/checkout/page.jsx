@@ -5,7 +5,6 @@ import { useStore } from '../../context/StoreContext';
 import { supabase } from '../../lib/supabase';
 import Link from 'next/link';
 
-// قائمة جميع محافظات مصر الـ 27 كاملة
 const EGYPT_GOVERNORATES = [
   'القاهرة', 'الجيزة', 'الإسكندرية', 'الفيوم', 'سوهاج', 'الشرقية', 'الدقهلية',
   'القليوبية', 'المنوفية', 'الغربية', 'البحيرة', 'كفر الشيخ', 'دمياط', 'بورسعيد',
@@ -19,6 +18,7 @@ export default function CheckoutPage() {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
+    whatsapp: '',
     governorate: 'القاهرة',
     address: '',
   });
@@ -26,10 +26,6 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(false);
   const [orderSubmitted, setOrderSubmitted] = useState(false);
 
-  // رقم واتساب المتجر مصحح بكود مصر
-  const STORE_WHATSAPP = '201130219615'; 
-
-  // حساب إجمالي السعر بدقة من السلة مباشرة
   const itemsTotal = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const shippingFee = 50;
   const grandTotal = itemsTotal + shippingFee;
@@ -45,11 +41,11 @@ export default function CheckoutPage() {
     setLoading(true);
 
     try {
-      // 1. حفظ الطلب في قاعدة البيانات Supabase
       const { error } = await supabase.from('orders').insert([
         {
           customer_name: formData.name,
           phone: formData.phone,
+          whatsapp: formData.whatsapp || formData.phone, // لو متبعتش ياخد رقم الفون الأساسي
           governorate: formData.governorate,
           address: formData.address,
           items: cart,
@@ -58,38 +54,13 @@ export default function CheckoutPage() {
         },
       ]);
 
-      if (error) {
-        console.error('Supabase error:', error);
-        throw error;
-      }
-
-      // 2. تجهيز نص الرسالة للواتساب
-      let itemsListText = cart
-        .map((item) => `• ${item.title} (مقاس: ${item.size || 'M'}) × ${item.quantity} = ${item.price * item.quantity} ج.م`)
-        .join('\n');
-
-      const whatsappMessage = `🔥 *طلب جديد من متجر LYNX* 🔥\n\n` +
-        `👤 *الاسم:* ${formData.name}\n` +
-        `📞 *الهاتف:* ${formData.phone}\n` +
-        `📍 *المحافظة:* ${formData.governorate}\n` +
-        `🏠 *العنوان:* ${formData.address}\n\n` +
-        `🛍️ *الطلبات:*\n${itemsListText}\n\n` +
-        `💵 *إجمالي المنتجات:* ${itemsTotal} ج.م\n` +
-        `🚚 *الشحن:* ${shippingFee} ج.م\n` +
-        `💰 *المبلغ الإجمالي:* ${grandTotal} ج.م`;
+      if (error) throw error;
 
       clearCart();
       setOrderSubmitted(true);
-
-      // 3. التحويل المباشر للواتساب
-      const encodedMessage = encodeURIComponent(whatsappMessage);
-      const whatsappUrl = `https://api.whatsapp.com/send?phone=${STORE_WHATSAPP}&text=${encodedMessage}`;
-
-      window.location.href = whatsappUrl;
-
     } catch (err) {
       console.error(err);
-      alert('خطأ أثناء إرسال الطلب: ' + (err.message || 'تأكد من الاتصال بالإنترنت'));
+      alert('حدث خطأ أثناء إرسال الطلب: ' + (err.message || 'حاول مرة أخرى'));
     } finally {
       setLoading(false);
     }
@@ -100,9 +71,9 @@ export default function CheckoutPage() {
       <main className="max-w-xl mx-auto p-6 md:p-12 text-center space-y-6" dir="rtl">
         <div className="bg-gray-900 border border-gray-800 p-8 rounded-3xl space-y-4 shadow-2xl">
           <span className="text-6xl block">🎉</span>
-          <h1 className="text-2xl font-black text-amber-400">تم تسجيل طلبك بنجاح!</h1>
+          <h1 className="text-2xl font-black text-amber-400">تم إرسال طلبك بنجاح!</h1>
           <p className="text-xs text-gray-400 leading-relaxed">
-            جاري تحويلك الآن لتطبيق الواتساب لتأكيد الطلب...
+            شكرًا لطلبك من LYNX. سيتم مراجعة الطلب والتواصل معك قريباً لتأكيد الشحن.
           </p>
           <div className="pt-4">
             <Link
@@ -147,13 +118,13 @@ export default function CheckoutPage() {
               required
               value={formData.name}
               onChange={handleChange}
-              placeholder="أدخل اسمك الكامل"
+              placeholder="الاسم"
               className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-amber-500"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-400 mb-1">رقم الهاتف</label>
+            <label className="block text-xs font-bold text-gray-400 mb-1">رقم الهاتف الأساسي</label>
             <input
               type="tel"
               name="phone"
@@ -161,6 +132,19 @@ export default function CheckoutPage() {
               value={formData.phone}
               onChange={handleChange}
               placeholder="010XXXXXXXX"
+              className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-amber-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-400 mb-1">رقم الواتساب (للتأكيد وإرسال الفاتورة)</label>
+            <input
+              type="tel"
+              name="whatsapp"
+              required
+              value={formData.whatsapp}
+              onChange={handleChange}
+              placeholder="011XXXXXXXX"
               className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-amber-500"
             />
           </div>
@@ -199,7 +183,7 @@ export default function CheckoutPage() {
             disabled={loading}
             className="w-full bg-amber-500 hover:bg-amber-400 text-black font-extrabold py-4 rounded-xl transition-all shadow-xl cursor-pointer disabled:opacity-50 text-sm"
           >
-            {loading ? 'جاري إرسال الطلب...' : 'تأكيد الطلب عبر الواتساب 💬'}
+            {loading ? 'جاري إرسال الطلب...' : 'تأكيد وحفظ الطلب 📦'}
           </button>
         </form>
 
