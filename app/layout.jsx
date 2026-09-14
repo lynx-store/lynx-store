@@ -1,11 +1,8 @@
+'use client';
+
 import './globals.css';
 import ChatWidget from '../components/ChatWidget';
 import { StoreProvider } from '../context/StoreContext';
-
-export const metadata = {
-  title: 'LYNX Streetwear | المتجر الرسمي',
-  description: 'تشكيلة ملابس LYNX الجديدة - أزياء رجالية عصرية',
-};
 
 export default function RootLayout({ children }) {
   return (
