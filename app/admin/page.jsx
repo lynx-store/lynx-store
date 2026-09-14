@@ -8,7 +8,6 @@ export default function AdminDashboard() {
   const [passwordInput, setPasswordInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // فحص حالة التسجيل السابقة في المتصفح
   useEffect(() => {
     const authStatus = localStorage.getItem('lynx_admin_auth');
     if (authStatus === 'true') {
@@ -32,14 +31,13 @@ export default function AdminDashboard() {
     setIsAuthenticated(false);
   };
 
-  // 1. شاشة تسجيل الدخول المحمية
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center p-4" dir="rtl">
         <div className="bg-gray-950 border border-gray-800 p-8 rounded-3xl w-full max-w-md space-y-6 shadow-2xl">
           <div className="text-center space-y-2">
             <h1 className="text-3xl font-black text-amber-400">لوحة تحكم LYNX</h1>
-            <p className="text-xs text-gray-500">يرجى أدخل كلمة المرور للوصول للنظام</p>
+            <p className="text-xs text-gray-500">يرجى إدخال كلمة المرور للوصول للنظام</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
@@ -70,14 +68,12 @@ export default function AdminDashboard() {
     );
   }
 
-  // 2. شاشة اللوحة الرئيسية (الأزرار الأربعة)
   return (
     <div className="min-h-screen bg-black text-white p-6 space-y-8" dir="rtl">
-      {/* الشريط العلوي */}
       <div className="max-w-5xl mx-auto flex justify-between items-center bg-gray-950 border border-gray-900 p-6 rounded-2xl shadow-xl">
         <div>
           <h1 className="text-2xl font-black text-amber-400">لوحة الإدارة الرئيسية</h1>
-          <p className="text-xs text-gray-400 mt-1">مرحباً بك، اختر الصفحة التي تريد الانتقال اليها</p>
+          <p className="text-xs text-gray-400 mt-1">مرحباً يا عبدالرحيم، اختر الصفحة التي تريد الانتقال إليها</p>
         </div>
         <button
           onClick={handleLogout}
@@ -87,7 +83,6 @@ export default function AdminDashboard() {
         </button>
       </div>
 
-      {/* شبكة الأزرار الأربعة */}
       <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
         
         {/* الزر 1: الدعم المباشر */}
@@ -116,28 +111,28 @@ export default function AdminDashboard() {
           </div>
         </Link>
 
-        {/* الزر 3: إضافة منتج */}
-        <Link href="/admin/add-product" className="group">
+        {/* الزر 3: إدارية/إضافة المنتجات (ربط بـ /admin/products) */}
+        <Link href="/admin/products" className="group">
           <div className="bg-gray-950 border border-gray-900 hover:border-amber-500 p-8 rounded-3xl transition-all duration-300 flex items-center gap-5 shadow-lg group-hover:scale-[1.02]">
             <div className="w-16 h-16 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-2xl flex items-center justify-center text-3xl group-hover:bg-amber-500 group-hover:text-black transition-all">
               ➕
             </div>
             <div>
-              <h3 className="text-xl font-bold text-white group-hover:text-amber-400 transition-colors">إضافة منتج جديد</h3>
-              <p className="text-xs text-gray-500 mt-1">رفع منتجات جديدة، ألوان، مقاسات وصور للمتجر</p>
+              <h3 className="text-xl font-bold text-white group-hover:text-amber-400 transition-colors">إضافة وإدارة المنتجات</h3>
+              <p className="text-xs text-gray-500 mt-1">رفع منتجات جديدة، ألوان، ومقاسات المتجر</p>
             </div>
           </div>
         </Link>
 
-        {/* الزر 4: عرض المتجر */}
-        <Link href="/" target="_blank" className="group">
+        {/* الزر 4: الطلبات (ربط بـ /admin/orders) */}
+        <Link href="/admin/orders" className="group">
           <div className="bg-gray-950 border border-gray-900 hover:border-amber-500 p-8 rounded-3xl transition-all duration-300 flex items-center gap-5 shadow-lg group-hover:scale-[1.02]">
             <div className="w-16 h-16 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-2xl flex items-center justify-center text-3xl group-hover:bg-amber-500 group-hover:text-black transition-all">
-              🛒
+              🛍️
             </div>
             <div>
-              <h3 className="text-xl font-bold text-white group-hover:text-amber-400 transition-colors">معاينة المتجر</h3>
-              <p className="text-xs text-gray-500 mt-1">الانتقال لواجهة المتجر الرئيسية لرؤيتها كعميل</p>
+              <h3 className="text-xl font-bold text-white group-hover:text-amber-400 transition-colors">طلبات الشراء</h3>
+              <p className="text-xs text-gray-500 mt-1">متابعة طلبات الزبائن الواردة وحالتها</p>
             </div>
           </div>
         </Link>
