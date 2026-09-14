@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+
 export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [userName, setUserName] = useState('');
@@ -12,7 +13,7 @@ export default function ChatWidget() {
   const [isMounted, setIsMounted] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // 1. تهيئة بيانات المتصفح (الاسم والجلسة)
+  // 1. تهيئة بيانات المتصفح عند التحميل أول مرة
   useEffect(() => {
     setIsMounted(true);
 
@@ -29,35 +30,37 @@ export default function ChatWidget() {
     }
   }, []);
 
-  // 2. تحميل المحادثة والاستماع الفوري
-  useEffect(() => {
-    if (!sessionId || !userName) return;
+  // 2. التمرير المباشر لأسفل الشات عند وصول رسائل جديدة
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
-    const fetchHistory = async () => {
-      const { data } = await supabase
+  useEffect(() => {
+    if (isOpen) {
+      scrollToBottom();
+    }
+  }, [messages, isOpen]);
+
+  // 3. جلب الرسائل والاستماع للتحديثات المباشرة عبر Realtime
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const fetchMessages = async () => {
+      const { data, error } = await supabase
         .from('chat_messages')
         .select('*')
         .eq('session_id', sessionId)
         .order('created_at', { ascending: true });
 
-      if (data && data.length > 0) {
+      if (!error && data) {
         setMessages(data);
-      } else {
-        setMessages([
-          {
-            id: 'welcome',
-            sender: 'admin',
-            message: `أهلاً بك يا ${userName} في LYNX 🐆! كيف يمكننا مساعدتك اليوم؟`,
-          },
-        ]);
       }
     };
 
-    fetchHistory();
+    fetchMessages();
 
-    // الاشتراك في التحديثات الفورية
     const channel = supabase
-      .channel(`chat_realtime_${sessionId}`)
+      .channel(`chat_${sessionId}`)
       .on(
         'postgres_changes',
         {
@@ -67,11 +70,7 @@ export default function ChatWidget() {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
-          const newMsg = payload.new;
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === newMsg.id)) return prev;
-            return [...prev, newMsg];
-          });
+          setMessages((prev) => [...prev, payload.new]);
         }
       )
       .subscribe();
@@ -79,171 +78,144 @@ export default function ChatWidget() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [sessionId, userName]);
-
-  // التمرير الفوري للأسفل
-  useEffect(() => {
-    if (isOpen) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages, isOpen, userName]);
+  }, [sessionId]);
 
   // حفظ اسم العميل
   const handleSaveName = (e) => {
     e.preventDefault();
     if (!inputName.trim()) return;
-    const name = inputName.trim();
-    setUserName(name);
-    localStorage.setItem('lynx_chat_user_name', name);
+    localStorage.setItem('lynx_chat_user_name', inputName.trim());
+    setUserName(inputName.trim());
   };
 
-  // إرسال رسالة العميل
+  // إرسال الرسالة
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!inputText.trim() || !sessionId || !userName) return;
+    if (!inputText.trim() || !sessionId) return;
 
-    const text = inputText.trim();
+    const textToSend = inputText.trim();
     setInputText('');
 
-    const tempId = Date.now();
-    const tempMsg = {
-      id: tempId,
-      session_id: sessionId,
-      user_name: userName,
-      sender: 'user',
-      message: text,
-      created_at: new Date().toISOString(),
-    };
-
-    setMessages((prev) => [...prev, tempMsg]);
-
-    const { data, error } = await supabase
-      .from('chat_messages')
-      .insert([
-        {
-          session_id: sessionId,
-          user_name: userName,
-          sender: 'user',
-          message: text,
-        },
-      ])
-      .select();
+    const { error } = await supabase.from('chat_messages').insert([
+      {
+        session_id: sessionId,
+        sender: 'user',
+        user_name: userName || 'عميل LYNX',
+        message: textToSend,
+      },
+    ]);
 
     if (error) {
       console.error('Error sending message:', error);
-    } else if (data && data.length > 0) {
-      setMessages((prev) => prev.map((m) => (m.id === tempId ? data[0] : m)));
     }
   };
 
+  // حماية المكون من الـ SSR لمنع الشاشة البيضاء
   if (!isMounted) return null;
 
   return (
-    <div className="fixed bottom-6 left-6 z-50 font-sans" dir="rtl">
-      {/* أيقونة الدعم العائمة */}
+    <div className="fixed bottom-6 left-6 z-50">
+      {/* زر إظهار وإخفاء الشات */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="bg-amber-500 hover:bg-amber-400 text-black p-4 rounded-full shadow-2xl flex items-center justify-center gap-2 transition-all transform hover:scale-110 active:scale-95 border-2 border-black/20"
-          title="الدردشة مع الدعم"
+          className="flex items-center gap-2 bg-[#e5ad35] hover:bg-[#c9952a] text-black font-bold px-4 py-3 rounded-full shadow-lg transition-all duration-300"
         >
-          <span className="text-2xl">🎧</span>
-          <span className="font-extrabold text-xs hidden sm:inline">الدردشة مع الدعم</span>
+          <span className="text-xl">🎧</span>
+          <span>الدعم المباشر</span>
         </button>
       )}
 
-      {/* نافذة الشات */}
+      {/* نافذة المحادثة */}
       {isOpen && (
-        <div className="w-80 sm:w-96 h-[500px] bg-[#0b101d] border border-gray-800 rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-200">
-          
-          {/* الترويسة */}
-          <div className="bg-[#050811] p-4 border-b border-gray-800 flex justify-between items-center">
+        <div className="w-80 sm:w-96 bg-[#0f172a] border border-slate-700 rounded-2xl shadow-2xl flex flex-col h-[500px] overflow-hidden text-white">
+          {/* شريط العنوان */}
+          <div className="bg-[#1e293b] p-4 flex justify-between items-center border-b border-slate-700">
             <div className="flex items-center gap-2">
-              <span className="text-xl">🎧</span>
-              <div>
-                <h3 className="text-amber-400 font-black text-xs">الدعم المباشر LYNX</h3>
-                {userName && <p className="text-[10px] text-gray-400">أهلاً {userName}</p>}
-              </div>
+              <span className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
+              <h3 className="font-bold text-sm">دعم LYNX المباشر</h3>
             </div>
             <button
               onClick={() => setIsOpen(false)}
-              className="text-gray-400 hover:text-white font-bold text-lg p-1"
+              className="text-slate-400 hover:text-white text-lg px-2"
             >
               ✕
             </button>
           </div>
 
-          {/* خطوة 1: أدخل اسمك إذا لم يسبق إدخاله */}
+          {/* خطوة إدخال الاسم إذا لم يكن مسجلاً */}
           {!userName ? (
-            <div className="flex-1 p-6 flex flex-col justify-center items-center text-center space-y-4">
-              <span className="text-4xl">👋</span>
-              <h4 className="text-white font-bold text-sm">مرحباً بك في خدمة العملاء</h4>
-              <p className="text-xs text-gray-400 leading-relaxed">
-                من فضلك ادخل اسمك للبدء في المحادثة مع فريق الدعم
+            <form onSubmit={handleSaveName} className="p-6 flex flex-col justify-center gap-4 flex-1">
+              <p className="text-sm text-slate-300 text-center">
+                مرحباً بك! يرجى إدخال اسمك للبدء بالتحدث مع الدعم:
               </p>
-
-              <form onSubmit={handleSaveName} className="w-full space-y-3 pt-2">
-                <input
-                  type="text"
-                  placeholder="اسمك الكريم..."
-                  value={inputName}
-                  onChange={(e) => setInputName(e.target.value)}
-                  className="w-full bg-[#050811] border border-gray-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-amber-500 text-center"
-                  required
-                />
-                <button
-                  type="submit"
-                  className="w-full bg-amber-500 hover:bg-amber-400 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg"
-                >
-                  بدء المحادثة 🚀
-                </button>
-              </form>
-            </div>
+              <input
+                type="text"
+                value={inputName}
+                onChange={(e) => setInputName(e.target.value)}
+                placeholder="اكتب اسمك هنا..."
+                className="w-full p-3 bg-[#1e293b] border border-slate-700 rounded-lg text-white focus:outline-none focus:border-[#e5ad35]"
+                required
+              />
+              <button
+                type="submit"
+                className="w-full bg-[#e5ad35] hover:bg-[#c9952a] text-black font-bold py-3 rounded-lg transition-colors"
+              >
+                بدء المحادثة
+              </button>
+            </form>
           ) : (
-            /* خطوة 2: شاشة المحادثة */
             <>
-              <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-[#0b101d]">
-                {messages.map((msg, index) => {
-                  const isUser = msg.sender === 'user';
-                  return (
+              {/* عرض الرسائل */}
+              <div className="flex-1 p-4 overflow-y-auto space-y-3">
+                {messages.length === 0 ? (
+                  <p className="text-center text-xs text-slate-400 mt-8">
+                    مرحباً {userName}! كيف يمكننا مساعدتك اليوم؟
+                  </p>
+                ) : (
+                  messages.map((msg) => (
                     <div
-                      key={msg.id || index}
-                      className={`flex ${isUser ? 'justify-start' : 'justify-end'}`}
+                      key={msg.id || Math.random()}
+                      className={`flex flex-col ${
+                        msg.sender === 'user' ? 'items-end' : 'items-start'
+                      }`}
                     >
                       <div
-                        className={`max-w-[82%] p-3 rounded-2xl text-xs leading-relaxed ${
-                          isUser
-                            ? 'bg-amber-500 text-black font-bold rounded-tr-none shadow-md'
-                            : 'bg-[#172033] text-white border border-gray-800 rounded-tl-none'
+                        className={`max-w-[80%] p-3 rounded-xl text-sm ${
+                          msg.sender === 'user'
+                            ? 'bg-[#e5ad35] text-black rounded-br-none font-medium'
+                            : 'bg-[#1e293b] text-white rounded-bl-none border border-slate-700'
                         }`}
                       >
                         {msg.message}
                       </div>
+                      <span className="text-[10px] text-slate-400 mt-1 px-1">
+                        {msg.sender === 'user' ? 'أنت' : 'الدعم'}
+                      </span>
                     </div>
-                  );
-                })}
+                  ))
+                )}
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* نموذج كتابة الرسالة */}
-              <form onSubmit={handleSendMessage} className="p-3 bg-[#050811] border-t border-gray-800 flex gap-2">
+              {/* حقل كتابة الرسالة */}
+              <form onSubmit={handleSendMessage} className="p-3 bg-[#1e293b] border-t border-slate-700 flex gap-2">
                 <input
                   type="text"
-                  placeholder="اكتب مشكلتك أو استفسارك..."
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  className="flex-1 bg-[#0b101d] border border-gray-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                  placeholder="اكتب رسالتك..."
+                  className="flex-1 p-2 bg-[#0f172a] border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-[#e5ad35]"
                 />
                 <button
                   type="submit"
-                  className="bg-amber-500 hover:bg-amber-400 text-black font-extrabold px-4 py-2.5 rounded-xl text-xs transition-all"
+                  className="bg-[#e5ad35] hover:bg-[#c9952a] text-black font-bold px-4 py-2 rounded-lg text-sm transition-colors"
                 >
                   إرسال
                 </button>
               </form>
             </>
           )}
-
         </div>
       )}
     </div>
